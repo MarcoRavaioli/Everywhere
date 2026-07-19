@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Camera, Check } from 'lucide-react';
@@ -6,17 +6,40 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useApp, ALL_TOPICS } from '@/context/AppContext';
+import { DEFAULT_AVATAR, AvatarError } from '@/api/avatars';
 
 export default function CreateProfile() {
   const navigate = useNavigate();
-  const { createProfile, currentUser } = useApp();
+  const { createProfile, currentUser, uploadAvatar } = useApp();
   const [form, setForm] = useState({
     name: '',
     bio: '',
     age: '',
-    photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&q=80',
+    photo: null,
+    photoPath: null,
   });
   const [selectedTopics, setSelectedTopics] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [photoError, setPhotoError] = useState(null);
+  const fileInputRef = useRef(null);
+
+  const handlePhotoSelected = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // permette di riselezionare lo stesso file
+    if (!file || uploading) return;
+    setPhotoError(null);
+    setUploading(true);
+    try {
+      const { path, url } = await uploadAvatar(file);
+      setForm(f => ({ ...f, photo: url, photoPath: path }));
+    } catch (err) {
+      setPhotoError(
+        err instanceof AvatarError ? err.message : 'Caricamento non riuscito. Riprova.'
+      );
+    } finally {
+      setUploading(false);
+    }
+  };
 
   // Se un profilo esiste già (es. si arriva qui per errore o per modificarlo),
   // precompila i campi invece di partire da zero e sovrascrivere.
@@ -61,6 +84,7 @@ export default function CreateProfile() {
         bio: form.bio.trim(),
         age,
         interests: selectedTopics,
+        photoPath: form.photoPath,
       });
       navigate('/home');
     } catch (err) {
@@ -90,19 +114,39 @@ export default function CreateProfile() {
         </h1>
 
         {/* Photo */}
-        <div className="flex justify-center mb-8">
+        <div className="flex flex-col items-center mb-8">
           <div className="relative">
             <div className="w-28 h-28 rounded-full overflow-hidden border-2 border-border">
               <img
-                src={form.photo}
+                src={form.photo || currentUser?.photo || DEFAULT_AVATAR}
                 alt="Profile"
                 className="w-full h-full object-cover"
+                onError={(e) => { e.currentTarget.src = DEFAULT_AVATAR; }}
               />
+              {uploading && (
+                <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                  <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin"></div>
+                </div>
+              )}
             </div>
-            <button className="absolute bottom-0 right-0 w-9 h-9 rounded-full bg-primary text-primary-foreground flex items-center justify-center glow-pink">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handlePhotoSelected}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="absolute bottom-0 right-0 w-9 h-9 rounded-full bg-primary text-primary-foreground flex items-center justify-center glow-pink disabled:opacity-50"
+            >
               <Camera className="w-4 h-4" />
             </button>
           </div>
+          {photoError && (
+            <p className="text-destructive text-xs mt-3 text-center max-w-[260px]">{photoError}</p>
+          )}
         </div>
 
         {/* Form fields */}

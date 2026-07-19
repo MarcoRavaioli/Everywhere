@@ -10,3 +10,9 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+// Solo in sviluppo: espone il client in console per i test manuali
+// (es. verificare che le policy Storage blocchino path altrui)
+if (import.meta.env.DEV && typeof window !== 'undefined') {
+  window.__supabase = supabase;
+}

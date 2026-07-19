@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { fetchMyProfile, upsertMyProfile, rowToUser } from '@/api/profiles';
+import { getAvatarUrl, uploadMyAvatar } from '@/api/avatars';
 
 const AppContext = createContext(null);
 
@@ -98,7 +99,19 @@ export function AppProvider({ children }) {
     setProfileChecked(false);
     fetchMyProfile()
       .then(row => {
-        if (!cancelled) setCurrentUser(rowToUser(row));
+        if (cancelled) return;
+        setCurrentUser(rowToUser(row));
+        // La signed URL della foto arriva in un secondo momento:
+        // nel frattempo la UI mostra il fallback
+        if (row?.photo_path) {
+          getAvatarUrl(row.photo_path).then(url => {
+            if (!cancelled && url) {
+              setCurrentUser(prev =>
+                prev && prev.id === row.id ? { ...prev, photo: url } : prev
+              );
+            }
+          });
+        }
       })
       .catch(err => {
         console.error('Caricamento profilo fallito:', err);
@@ -124,13 +137,17 @@ export function AppProvider({ children }) {
 
   const createProfile = useCallback(async (profileData) => {
     if (authUser) {
-      const row = await upsertMyProfile({
+      const fields = {
         name: profileData.name,
         bio: profileData.bio ?? '',
         age: profileData.age ?? null,
         interests: profileData.interests ?? [],
-      });
+      };
+      // Foto caricata durante l'onboarding, prima che la riga esistesse
+      if (profileData.photoPath) fields.photo_path = profileData.photoPath;
+      const row = await upsertMyProfile(fields);
       const user = rowToUser(row);
+      if (row.photo_path) user.photo = await getAvatarUrl(row.photo_path);
       setCurrentUser(user);
       return user;
     }
@@ -151,6 +168,16 @@ export function AppProvider({ children }) {
     }
     setCurrentUser(prev => ({ ...prev, ...profileData }));
   }, [authUser, currentUser]);
+
+  // Carica la foto profilo. Ritorna { path, url }; lancia AvatarError
+  // con messaggio user-friendly su file non validi o errori di rete.
+  const uploadAvatar = useCallback(async (file) => {
+    const { path, url } = await uploadMyAvatar(file);
+    setCurrentUser(prev =>
+      prev && !prev.isGuest ? { ...prev, photo: url, photoPath: path } : prev
+    );
+    return { path, url };
+  }, []);
 
   const startSession = useCallback(() => {
     setCurrentVenue(MOCK_VENUE);
@@ -252,7 +279,7 @@ export function AppProvider({ children }) {
 
   return (
     <AppContext.Provider value={{
-      currentUser, setCurrentUser, profileChecked, loginAsGuest, createProfile, updateProfile,
+      currentUser, setCurrentUser, profileChecked, loginAsGuest, createProfile, updateProfile, uploadAvatar,
       business, setBusiness,
       isInSession, currentVenue, sessionTimeLeft, formatTime,
       startSession, endSession,

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Camera, LogOut, Shield, Eye, Bell, Pencil, Check, X, Menu, Store, ChevronRight } from 'lucide-react';
@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useApp, ALL_TOPICS } from '@/context/AppContext';
+import { DEFAULT_AVATAR, AvatarError } from '@/api/avatars';
 
 function SettingsItem({ icon: Icon, label, value }) {
   return (
@@ -68,11 +69,14 @@ function EditProfileModal({ user, onSave, onClose }) {
         <div className="flex justify-center">
           <div className="relative">
             <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-border">
-              <img src={user?.photo || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&q=80'} alt="Profile" className="w-full h-full object-cover" />
+              <img
+                src={user?.photo || DEFAULT_AVATAR}
+                alt="Profile"
+                className="w-full h-full object-cover"
+                onError={(e) => { e.currentTarget.src = DEFAULT_AVATAR; }}
+              />
             </div>
-            <button className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center glow-pink">
-              <Camera className="w-3.5 h-3.5" />
-            </button>
+            {/* La foto si cambia dall'avatar della pagina Profilo */}
           </div>
         </div>
 
@@ -148,9 +152,29 @@ function EditProfileModal({ user, onSave, onClose }) {
 
 export default function Profile() {
   const navigate = useNavigate();
-  const { currentUser, updateProfile, endSession } = useApp();
+  const { currentUser, updateProfile, endSession, uploadAvatar } = useApp();
   const [editOpen, setEditOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [photoError, setPhotoError] = useState(null);
+  const fileInputRef = useRef(null);
+
+  const handlePhotoSelected = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || uploading) return;
+    setPhotoError(null);
+    setUploading(true);
+    try {
+      await uploadAvatar(file);
+    } catch (err) {
+      setPhotoError(
+        err instanceof AvatarError ? err.message : 'Caricamento non riuscito. Riprova.'
+      );
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const handleLogout = () => {
     endSession();
@@ -187,12 +211,35 @@ export default function Profile() {
           <div className="relative mb-3">
             <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-primary/30">
               <img
-                src={currentUser?.photo || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&q=80'}
+                src={currentUser?.photo || DEFAULT_AVATAR}
                 alt={currentUser?.name}
                 className="w-full h-full object-cover"
+                onError={(e) => { e.currentTarget.src = DEFAULT_AVATAR; }}
               />
+              {uploading && (
+                <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                  <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin"></div>
+                </div>
+              )}
             </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handlePhotoSelected}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center glow-pink disabled:opacity-50"
+            >
+              <Camera className="w-3.5 h-3.5" />
+            </button>
           </div>
+          {photoError && (
+            <p className="text-destructive text-xs mb-2 max-w-[260px]">{photoError}</p>
+          )}
           <h2 className="text-xl font-bold text-foreground">
             {currentUser?.name || 'Ospite'}
             {currentUser?.age && <span className="font-normal text-muted-foreground">, {currentUser.age}</span>}
