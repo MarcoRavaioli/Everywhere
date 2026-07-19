@@ -47,7 +47,7 @@ export const ALL_TOPICS = [
 ];
 
 export function AppProvider({ children }) {
-  const { user: authUser } = useAuth();
+  const { user: authUser, authChecked } = useAuth();
   const [currentUser, setCurrentUser] = useState(null);
   const [profileChecked, setProfileChecked] = useState(false);
   const [business, setBusiness] = useState(null);
@@ -84,9 +84,12 @@ export function AppProvider({ children }) {
     return () => clearInterval(timerRef.current);
   }, [isInSession, sessionTimeLeft]);
 
-  // Carica il profilo reale da Supabase quando cambia l'utente autenticato
+  // Carica il profilo reale da Supabase quando cambia l'utente autenticato.
+  // profileChecked resta false finché l'auth non è risolta E il profilo non è
+  // stato cercato: chi fa routing deve aspettare entrambi.
   useEffect(() => {
     let cancelled = false;
+    if (!authChecked) return;
     if (!authUser) {
       setCurrentUser(prev => (prev?.isGuest ? prev : null));
       setProfileChecked(true);
@@ -105,7 +108,7 @@ export function AppProvider({ children }) {
         if (!cancelled) setProfileChecked(true);
       });
     return () => { cancelled = true; };
-  }, [authUser?.id]);
+  }, [authChecked, authUser?.id]);
 
   const loginAsGuest = useCallback(() => {
     setCurrentUser({

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Camera, Check } from 'lucide-react';
@@ -9,7 +9,7 @@ import { useApp, ALL_TOPICS } from '@/context/AppContext';
 
 export default function CreateProfile() {
   const navigate = useNavigate();
-  const { createProfile } = useApp();
+  const { createProfile, currentUser } = useApp();
   const [form, setForm] = useState({
     name: '',
     bio: '',
@@ -17,6 +17,20 @@ export default function CreateProfile() {
     photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&q=80',
   });
   const [selectedTopics, setSelectedTopics] = useState([]);
+
+  // Se un profilo esiste già (es. si arriva qui per errore o per modificarlo),
+  // precompila i campi invece di partire da zero e sovrascrivere.
+  useEffect(() => {
+    if (currentUser && !currentUser.isGuest) {
+      setForm(f => ({
+        ...f,
+        name: f.name || currentUser.name || '',
+        bio: f.bio || currentUser.bio || '',
+        age: f.age || (currentUser.age ?? ''),
+      }));
+      setSelectedTopics(prev => (prev.length > 0 ? prev : (currentUser.interests ?? [])));
+    }
+  }, [currentUser]);
 
   const toggleTopic = (topic) => {
     setSelectedTopics(prev => {
