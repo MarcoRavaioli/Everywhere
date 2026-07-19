@@ -5,10 +5,12 @@ import { Mail } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import EvLogo from '@/components/everywhere/EvLogo';
 import { useApp } from '@/context/AppContext';
+import { useAuth } from '@/lib/AuthContext';
 
 export default function Welcome() {
   const navigate = useNavigate();
   const { loginAsGuest } = useApp();
+  const { signInWithGoogle, authError } = useAuth();
 
   const handleGuestLogin = () => {
     loginAsGuest();
@@ -69,11 +71,17 @@ export default function Welcome() {
           <Button
             variant="outline"
             className="w-full h-13 rounded-xl border-border/50 bg-white/5 hover:bg-white/10 text-foreground font-medium text-sm"
-            onClick={handleGuestLogin}
+            onClick={signInWithGoogle}
           >
             <img src="https://www.google.com/favicon.ico" alt="G" className="w-4 h-4 mr-2" />
             Continua con Google
           </Button>
+
+          {authError && (
+            <p className="text-center text-destructive text-xs">
+              Accesso non riuscito: {authError.message}
+            </p>
+          )}
 
           <Button
             variant="outline"

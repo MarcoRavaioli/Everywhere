@@ -1,40 +1,52 @@
-**Welcome to your Base44 project** 
+# EveryWhere
 
-**About**
+App social basata sui locali: le persone presenti nello stesso locale possono
+vedersi, mandarsi un "EV" (interesse), matchare, chattare e offrirsi un drink.
+Include un lato business per i locali (dashboard, messaggi/promo, QR di check-in).
 
-View and Edit  your app on [Base44.com](http://Base44.com) 
+**Stack:** React + Vite + Tailwind + shadcn/ui · Supabase (Postgres, Auth, Realtime, Storage) · Cloudflare Pages
 
-This project contains everything you need to run your app locally.
+Stato del progetto e prossimi passi: vedi [ROADMAP.md](ROADMAP.md).
 
-**Edit the code in your local development environment**
+## Sviluppo locale
 
-Any change pushed to the repo will also be reflected in the Base44 Builder.
+Prerequisiti: Node 20+.
 
-**Prerequisites:** 
+1. Installa le dipendenze:
 
-1. Clone the repository using the project's Git URL 
-2. Navigate to the project directory
-3. Install dependencies: `npm install`
-4. Create an `.env.local` file and set the right environment variables
+   ```sh
+   npm install
+   ```
 
-```
-VITE_BASE44_APP_ID=your_app_id
-VITE_BASE44_APP_BASE_URL=your_backend_url
+2. Crea `.env.local` nella root con le chiavi del progetto Supabase di dev
+   (Dashboard → Project Settings → API):
 
-e.g.
-VITE_BASE44_APP_ID=cbef744a8545c389ef439ea6
-VITE_BASE44_APP_BASE_URL=https://my-to-do-list-81bfaad7.base44.app
-```
+   ```
+   VITE_SUPABASE_URL=https://<project-ref>.supabase.co
+   VITE_SUPABASE_ANON_KEY=<publishable/anon key>
+   ```
 
-Run the app: `npm run dev`
+   La anon key è pubblica per design: la sicurezza dei dati è garantita dalle
+   Row Level Security policy sul database. Non mettere mai qui la
+   `service_role` key.
 
-**Publish your changes**
+3. Avvia il dev server:
 
-Open [Base44.com](http://Base44.com) and click on Publish.
+   ```sh
+   npm run dev
+   ```
 
-**Docs & Support**
+## Script
 
-Documentation: [https://docs.base44.com/Integrations/Using-GitHub](https://docs.base44.com/Integrations/Using-GitHub)
+| Comando | Cosa fa |
+|---|---|
+| `npm run dev` | Dev server con hot reload |
+| `npm run build` | Build di produzione in `dist/` |
+| `npm run preview` | Serve la build di produzione in locale |
+| `npm run lint` | ESLint |
 
-Support: [https://app.base44.com/support](https://app.base44.com/support)
+## Auth
 
+Login con Google via Supabase Auth (flusso OAuth con redirect).
+Apple verrà aggiunto con l'account Apple Developer (necessario comunque per
+la pubblicazione su App Store).

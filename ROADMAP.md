@@ -20,11 +20,11 @@ attiva nello stesso locale o a un match. Nessun browsing esterno degli utenti.
 
 ## 🔨 Step 2 — Backend Supabase (in corso)
 
-- [ ] Setup a carico di Marco: progetto Supabase dev (regione EU) + Google OAuth su Google Cloud Console
-- [ ] `.env.local` con `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY`
-- [ ] Client Supabase (`src/lib/supabaseClient.js`)
-- [ ] Riscrittura `AuthContext` su Supabase Auth (Google), stessa interfaccia `useAuth()`
-- [ ] Rimozione dipendenze Base44 (`@base44/sdk`, `@base44/vite-plugin`, `base44Client.js`, `app-params.js`)
+- [x] Setup a carico di Marco: progetto Supabase dev (regione EU) + Google OAuth su Google Cloud Console
+- [x] `.env.local` con `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY`
+- [x] Client Supabase (`src/lib/supabaseClient.js`)
+- [x] Riscrittura `AuthContext` su Supabase Auth (Google), stessa interfaccia `useAuth()`
+- [x] Rimozione dipendenze Base44 (`@base44/sdk`, `@base44/vite-plugin`, `base44Client.js`, `app-params.js`)
 - [ ] Migration SQL: tabelle `profiles`, `venues`, `sessions`, `evs`, `matches`, `messages`, `venue_messages`, `memories`, `drinks` (+ PostGIS)
 - [ ] RLS su tutte le tabelle (visibilità profili: stesso-locale-attivo + match)
 - [ ] RPC: check-in via `qr_token`, invio EV con validazione sessione
