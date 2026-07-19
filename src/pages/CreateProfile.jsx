@@ -26,15 +26,35 @@ export default function CreateProfile() {
     });
   };
 
-  const handleContinue = () => {
-    createProfile({
-      name: form.name || 'Ospite',
-      bio: form.bio,
-      age: form.age ? parseInt(form.age) : 24,
-      photo: form.photo,
-      interests: selectedTopics.length > 0 ? selectedTopics : ['Musica', 'Viaggi', 'Serate'],
-    });
-    navigate('/home');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  const handleContinue = async () => {
+    const age = parseInt(form.age, 10);
+    if (!form.name.trim()) {
+      setError('Inserisci il tuo nome.');
+      return;
+    }
+    if (!age || age < 18) {
+      setError('Devi avere almeno 18 anni per usare EveryWhere.');
+      return;
+    }
+    setError(null);
+    setSaving(true);
+    try {
+      await createProfile({
+        name: form.name.trim(),
+        bio: form.bio.trim(),
+        age,
+        interests: selectedTopics,
+      });
+      navigate('/home');
+    } catch (err) {
+      console.error('Creazione profilo fallita:', err);
+      setError('Salvataggio non riuscito. Controlla la connessione e riprova.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -150,11 +170,16 @@ export default function CreateProfile() {
           </p>
         </div>
 
+        {error && (
+          <p className="text-destructive text-sm text-center mb-4">{error}</p>
+        )}
+
         <Button
           onClick={handleContinue}
+          disabled={saving}
           className="w-full h-13 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold glow-pink"
         >
-          Continua
+          {saving ? 'Salvataggio…' : 'Continua'}
         </Button>
       </motion.div>
     </div>

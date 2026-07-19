@@ -1,7 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Mail } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import EvLogo from '@/components/everywhere/EvLogo';
 import { useApp } from '@/context/AppContext';
@@ -61,36 +60,20 @@ export default function Welcome() {
           className="w-full max-w-sm space-y-3"
         >
           <Button
-            onClick={handleGuestLogin}
             className="w-full h-13 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-sm glow-pink"
-          >
-            <Mail className="w-4 h-4 mr-2" />
-            Accedi con Email
-          </Button>
-
-          <Button
-            variant="outline"
-            className="w-full h-13 rounded-xl border-border/50 bg-white/5 hover:bg-white/10 text-foreground font-medium text-sm"
             onClick={signInWithGoogle}
           >
             <img src="https://www.google.com/favicon.ico" alt="G" className="w-4 h-4 mr-2" />
             Continua con Google
           </Button>
 
+          {/* Sign in with Apple arriverà con l'account Apple Developer (v. ROADMAP) */}
+
           {authError && (
             <p className="text-center text-destructive text-xs">
               Accesso non riuscito: {authError.message}
             </p>
           )}
-
-          <Button
-            variant="outline"
-            className="w-full h-13 rounded-xl border-border/50 bg-white/5 hover:bg-white/10 text-foreground font-medium text-sm"
-            onClick={handleGuestLogin}
-          >
-            <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" /></svg>
-            Continua con Facebook
-          </Button>
 
           <div className="pt-2">
             <button

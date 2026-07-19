@@ -1,11 +1,28 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { User, Store } from 'lucide-react';
 import EvLogo from '@/components/everywhere/EvLogo';
+import { useAuth } from '@/lib/AuthContext';
+import { useApp } from '@/context/AppContext';
 
 export default function AccountTypeSelect() {
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
+  const { currentUser, profileChecked } = useApp();
+
+  // "/" è anche la landing del ritorno OAuth: chi è già loggato
+  // viene smistato in base allo stato del profilo.
+  useEffect(() => {
+    if (!isAuthenticated || !profileChecked) return;
+    if (!currentUser) {
+      navigate('/create-profile', { replace: true });
+    } else if (currentUser.accountType === 'business') {
+      navigate('/business', { replace: true });
+    } else {
+      navigate('/home', { replace: true });
+    }
+  }, [isAuthenticated, profileChecked, currentUser, navigate]);
 
   return (
     <div className="min-h-screen bg-background relative overflow-hidden flex flex-col">

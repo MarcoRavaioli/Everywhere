@@ -25,11 +25,11 @@ attiva nello stesso locale o a un match. Nessun browsing esterno degli utenti.
 - [x] Client Supabase (`src/lib/supabaseClient.js`)
 - [x] Riscrittura `AuthContext` su Supabase Auth (Google), stessa interfaccia `useAuth()`
 - [x] Rimozione dipendenze Base44 (`@base44/sdk`, `@base44/vite-plugin`, `base44Client.js`, `app-params.js`)
-- [ ] Migration SQL: tabelle `profiles`, `venues`, `sessions`, `evs`, `matches`, `messages`, `venue_messages`, `memories`, `drinks` (+ PostGIS)
-- [ ] RLS su tutte le tabelle (visibilità profili: stesso-locale-attivo + match)
-- [ ] RPC: check-in via `qr_token`, invio EV con validazione sessione
-- [ ] Trigger/RPC match su EV reciproco
-- [ ] Bucket Storage privati `avatars` e `memories` (signed URL)
+- [x] Migration SQL: tabelle `profiles`, `venues`, `sessions`, `evs`, `matches`, `messages`, `venue_messages`, `memories`, `drinks` (+ PostGIS) — applicata sul progetto dev
+- [x] RLS su tutte le tabelle (visibilità profili: stesso-locale-attivo + match) — verificata: anon riceve zero righe
+- [x] RPC: check-in via `qr_token`, invio EV con validazione sessione — execute negato ad anon
+- [x] Match su EV reciproco (dentro la RPC `send_ev`)
+- [x] Bucket Storage privati `avatars` e `memories` (signed URL)
 - [ ] Nota: un business può avere più `venues` a livello dati; l'onboarding/UI per ora assume 1 locale
 
 ## 📡 Step 3 — Collegare il frontend + Realtime

@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
+import { useAuth } from '@/lib/AuthContext';
+import { fetchMyProfile, upsertMyProfile, rowToUser } from '@/api/profiles';
 
 const AppContext = createContext(null);
 
@@ -45,7 +47,9 @@ export const ALL_TOPICS = [
 ];
 
 export function AppProvider({ children }) {
+  const { user: authUser } = useAuth();
   const [currentUser, setCurrentUser] = useState(null);
+  const [profileChecked, setProfileChecked] = useState(false);
   const [business, setBusiness] = useState(null);
   const [isInSession, setIsInSession] = useState(false);
   const [currentVenue, setCurrentVenue] = useState(null);
@@ -80,6 +84,29 @@ export function AppProvider({ children }) {
     return () => clearInterval(timerRef.current);
   }, [isInSession, sessionTimeLeft]);
 
+  // Carica il profilo reale da Supabase quando cambia l'utente autenticato
+  useEffect(() => {
+    let cancelled = false;
+    if (!authUser) {
+      setCurrentUser(prev => (prev?.isGuest ? prev : null));
+      setProfileChecked(true);
+      return;
+    }
+    setProfileChecked(false);
+    fetchMyProfile()
+      .then(row => {
+        if (!cancelled) setCurrentUser(rowToUser(row));
+      })
+      .catch(err => {
+        console.error('Caricamento profilo fallito:', err);
+        if (!cancelled) setCurrentUser(null);
+      })
+      .finally(() => {
+        if (!cancelled) setProfileChecked(true);
+      });
+    return () => { cancelled = true; };
+  }, [authUser?.id]);
+
   const loginAsGuest = useCallback(() => {
     setCurrentUser({
       id: 'guest',
@@ -92,13 +119,35 @@ export function AppProvider({ children }) {
     });
   }, []);
 
-  const createProfile = useCallback((profileData) => {
+  const createProfile = useCallback(async (profileData) => {
+    if (authUser) {
+      const row = await upsertMyProfile({
+        name: profileData.name,
+        bio: profileData.bio ?? '',
+        age: profileData.age ?? null,
+        interests: profileData.interests ?? [],
+      });
+      const user = rowToUser(row);
+      setCurrentUser(user);
+      return user;
+    }
+    // Modalità ospite (demo): solo stato locale
     setCurrentUser(prev => ({ ...prev, ...profileData, isGuest: false }));
-  }, []);
+  }, [authUser]);
 
-  const updateProfile = useCallback((profileData) => {
+  const updateProfile = useCallback(async (profileData) => {
+    if (authUser && currentUser && !currentUser.isGuest) {
+      const row = await upsertMyProfile({
+        name: profileData.name ?? currentUser.name,
+        bio: profileData.bio ?? currentUser.bio ?? '',
+        age: profileData.age ?? currentUser.age,
+        interests: profileData.interests ?? currentUser.interests ?? [],
+      });
+      setCurrentUser(rowToUser(row));
+      return;
+    }
     setCurrentUser(prev => ({ ...prev, ...profileData }));
-  }, []);
+  }, [authUser, currentUser]);
 
   const startSession = useCallback(() => {
     setCurrentVenue(MOCK_VENUE);
@@ -200,7 +249,7 @@ export function AppProvider({ children }) {
 
   return (
     <AppContext.Provider value={{
-      currentUser, setCurrentUser, loginAsGuest, createProfile, updateProfile,
+      currentUser, setCurrentUser, profileChecked, loginAsGuest, createProfile, updateProfile,
       business, setBusiness,
       isInSession, currentVenue, sessionTimeLeft, formatTime,
       startSession, endSession,
