@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import EvLogo from '@/components/everywhere/EvLogo';
 import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/lib/AuthContext';
+import EmailAuthForm from '@/components/everywhere/EmailAuthForm';
 
 export default function Welcome() {
   const navigate = useNavigate();
@@ -74,6 +75,15 @@ export default function Welcome() {
               Accesso non riuscito: {authError.message}
             </p>
           )}
+
+          <div className="flex items-center gap-3 py-1">
+            <div className="h-px flex-1 bg-border/50" />
+            <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wider">oppure</span>
+            <div className="h-px flex-1 bg-border/50" />
+          </div>
+
+          {/* Dopo il login la "/" smista in base al profilo */}
+          <EmailAuthForm onAuthenticated={() => navigate('/', { replace: true })} />
 
           <div className="pt-2">
             <button

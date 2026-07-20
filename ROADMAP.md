@@ -49,11 +49,29 @@ attiva nello stesso locale o a un match. Nessun browsing esterno degli utenti.
       terminare la sessione Supabase, quindi si rientrava subito. Verificato:
       si torna alla scelta account e ci si resta anche dopo reload
 
-> **Nota login test:** per creare account di test si usa la Dashboard Supabase
-> (Authentication → Add user, email+password, Auto Confirm) e si fa login da
-> console con `__supabase.auth.signInWithPassword(...)` — solo per test interni.
-> L'email+password NON diventa un metodo di login reale nell'app: in produzione
-> resta solo Google/Apple, come deciso.
+> **Decisione rivista:** l'email+password **è** un metodo di login reale
+> dell'app (prima era solo un trucco per i test). In produzione la conferma
+> email è obbligatoria; in dev si tiene disattivata.
+
+### ✅ 3c-5 — Login/registrazione con email e password (implementato)
+- [x] `signInWithEmail` / `signUpWithEmail` in AuthContext, con errori
+      Supabase tradotti in italiano **per codice** (`error.code`), non per
+      testo del messaggio
+- [x] `EmailAuthForm` riutilizzato da Welcome e dal gate del business
+- [x] Registrazione: se la conferma email è attiva non c'è sessione subito →
+      schermata "controlla la tua email"; se è disattivata si entra diretti
+- [x] Password minima 8 caratteri (Supabase di default ne accetta 6)
+- [x] Email già registrata gestita anche quando Supabase la nasconde
+      (anti-enumeration: utente con `identities` vuoto)
+- [ ] **Da fare in Supabase (dev):** Authentication → Providers → Email →
+      **disattivare "Confirm email"**. Oggi è ATTIVA: la registrazione non
+      logga subito e l'invio email è limitato a poche all'ora
+- [ ] **Recupero password: NON implementato.** Serve una pagina che gestisca
+      il link di recupero (`type=recovery`) e permetta di impostare la nuova
+      password. Obbligatorio prima della beta pubblica
+- [ ] **Prima della produzione:** SMTP proprio (Resend/Postmark/SES). Il
+      servizio email integrato di Supabase è limitato a poche email/ora e
+      non è pensato per la produzione
 
 ### 3c-1 — Onboarding business: locale reale (da testare)
 - [x] RPC `create_my_venue` atomica: profilo business + `venues` + `venue_qr_tokens`;

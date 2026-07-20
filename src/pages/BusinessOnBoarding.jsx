@@ -8,6 +8,7 @@ import EvLogo from '@/components/everywhere/EvLogo';
 import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/lib/AuthContext';
 import { createMyVenue, fetchMyVenue, VenueError } from '@/api/venues';
+import EmailAuthForm from '@/components/everywhere/EmailAuthForm';
 
 const VENUE_TYPES = ['Club / Discoteca', 'Bar / Cocktail Bar', 'Lounge', 'Festival', 'Evento privato', 'Ristorante', 'Beach club', 'Altro'];
 
@@ -98,16 +99,28 @@ export default function BusinessOnboarding() {
           Serve un account per gestire la tua venue, il QR e le comunicazioni.
           Accedi prima di inserire i dati.
         </p>
-        <Button
-          onClick={signInWithGoogle}
-          className="w-full max-w-sm h-13 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold mt-8 glow-pink"
-        >
-          <img src="https://www.google.com/favicon.ico" alt="G" className="w-4 h-4 mr-2" />
-          Continua con Google
-        </Button>
-        {authError && (
-          <p className="text-destructive text-xs mt-3">Accesso non riuscito: {authError.message}</p>
-        )}
+        <div className="w-full max-w-sm mt-8 space-y-3">
+          <Button
+            onClick={signInWithGoogle}
+            className="w-full h-13 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold glow-pink"
+          >
+            <img src="https://www.google.com/favicon.ico" alt="G" className="w-4 h-4 mr-2" />
+            Continua con Google
+          </Button>
+
+          {authError && (
+            <p className="text-destructive text-xs">Accesso non riuscito: {authError.message}</p>
+          )}
+
+          <div className="flex items-center gap-3 py-1">
+            <div className="h-px flex-1 bg-border/50" />
+            <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wider">oppure</span>
+            <div className="h-px flex-1 bg-border/50" />
+          </div>
+
+          {/* Nessuna navigazione: autenticato, il gate lascia il posto al form */}
+          <EmailAuthForm />
+        </div>
         <button
           onClick={() => navigate('/')}
           className="text-muted-foreground text-xs underline underline-offset-2 mt-6"
