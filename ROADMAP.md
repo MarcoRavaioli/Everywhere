@@ -42,12 +42,12 @@ attiva nello stesso locale o a un match. Nessun browsing esterno degli utenti.
 - [ ] **Test rimandato a 3e:** un utente NON in sessione/match con me non può
       ottenere la signed URL della mia foto (serve un secondo account reale,
       naturale quando in 3e si testano persone/EV/match con 2 utenti)
-- [ ] **Fix trovato dal test:** `/profile` è raggiungibile solo dentro
-      `SessionLayout` (serve una sessione attiva in un locale) — eredità della
-      struttura demo, non scelta di prodotto. Per un'app social l'utente deve
-      poter curare foto/bio/interessi anche da casa, fuori sessione. Aggiungere
-      `/profile` (e l'accesso a esso, es. icona su Home) anche fuori da
-      `SessionLayout`, prima del 3g/3h.
+- [x] **Fix trovato dal test:** `/profile` ora vive fuori da `SessionLayout`
+      (che rimanda a `/home` senza sessione attiva); ingresso dall'avatar in
+      alto a destra nella Home, bottom nav solo durante la sessione
+- [x] **Logout reale** (utente e business): chiudeva solo lo stato mock senza
+      terminare la sessione Supabase, quindi si rientrava subito. Verificato:
+      si torna alla scelta account e ci si resta anche dopo reload
 
 > **Nota login test:** per creare account di test si usa la Dashboard Supabase
 > (Authentication → Add user, email+password, Auto Confirm) e si fa login da
@@ -74,15 +74,33 @@ attiva nello stesso locale o a un match. Nessun browsing esterno degli utenti.
       sono campi URL liberi: vanno sostituiti da upload su Storage come gli
       avatar, non da URL arbitrari)
 
-### 3c-2 — Dashboard business
-- [ ] QR reale del locale (`qrcode.react`) su URL `/checkin?t=<token>`, stampa/condivisione
-- [ ] Presenze attive reali (conteggio sessioni aperte del venue) con empty state
-- [ ] CRUD `venue_messages` al posto dei mock; rimozione dei finti campi carta
-- [ ] Rotazione QR dalla UI, con avviso che invalida i QR già esposti
-- [ ] Se il business ha già un locale, l'onboarding porta alla dashboard
-      invece di crearne un secondo
-- [ ] **Test:** onboarding completo → QR visibile in dashboard; un utente
-      normale non vede il token via API
+### 3c-2a — Dashboard business: QR e presenze (da testare)
+- [x] QR reale (`qrcode.react`) sull'URL `/checkin?t=<token>`, con stampa
+      (CSS dedicato: stampa solo il QR) e condivisione/copia link
+- [x] Rotazione QR dalla UI, con conferma esplicita che invalida i codici
+      già stampati
+- [x] Presenze reali (`Presenti ora` / `Check-in totali`) con empty state;
+      rimossi i numeri finti dalla home della dashboard
+- [x] Rimossi il finto pagamento e i finti campi carta ("avvia sessione")
+- [x] Insight resta dimostrativo ma ora lo dichiara con un avviso in pagina
+- [x] Locale già registrato → l'onboarding porta alla dashboard
+- [x] Stati loading / nessun-locale / errore con retry
+- [ ] **Test:** QR visibile e scansionabile; rotazione cambia il codice;
+      un utente normale non legge il token via API
+
+### 3c-2b — Comunicazioni del locale (accorpato a 3g)
+- [ ] CRUD `venue_messages` reale al posto dei mock (oggi il form non salva)
+- [ ] Attenzione: la UI ha 4 categorie (promo/lineup/update/event) ma il DB
+      ne accetta 2 (`promo`/`info`) → serve migration o riduzione della UI
+- [ ] Si fa insieme alla pagina Locale (3g), che è dove i messaggi si vedono
+
+### ❓ Decisione aperta — "sessione del locale" come entità
+Il modello dati attuale: il locale ha un QR permanente, e la "sessione" è
+del singolo utente (check-in con `expires_at`). La UI demo invece prevedeva
+sessioni serali del locale, a pagamento (€50/serata).
+Serve decidere prima dello Step 6: il piano "pay per session" richiede
+un'entità `venue_sessions` (inizio/fine serata) da fatturare, oppure si
+passa a un modello ad abbonamento sul locale.
 
 ### 3c-3 — Geocoding (prima che "locali vicini" funzioni)
 - [ ] `venues.location` oggi è sempre `null`: `venues_nearby()` filtra

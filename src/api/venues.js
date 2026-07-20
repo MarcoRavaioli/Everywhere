@@ -84,6 +84,31 @@ export async function fetchMyVenue() {
   };
 }
 
+// Presenze del locale. L'owner può leggere le sessioni del proprio venue
+// (RLS), ma non i profili di chi è dentro: qui servono solo i numeri.
+// Ritorna sempre un oggetto: un errore non deve rompere la dashboard.
+export async function fetchVenueStats(venueId) {
+  if (!venueId) return { activeNow: 0, totalSessions: 0, failed: false };
+  const nowIso = new Date().toISOString();
+  const [active, total] = await Promise.all([
+    supabase
+      .from('sessions')
+      .select('id', { count: 'exact', head: true })
+      .eq('venue_id', venueId)
+      .is('ended_at', null)
+      .gt('expires_at', nowIso),
+    supabase
+      .from('sessions')
+      .select('id', { count: 'exact', head: true })
+      .eq('venue_id', venueId),
+  ]);
+  if (active.error || total.error) {
+    console.error('fetchVenueStats fallita:', active.error || total.error);
+    return { activeNow: 0, totalSessions: 0, failed: true };
+  }
+  return { activeNow: active.count ?? 0, totalSessions: total.count ?? 0, failed: false };
+}
+
 // Genera un nuovo token QR (invalida quello esposto in precedenza).
 export async function rotateVenueQr(venueId) {
   const { data, error } = await supabase.rpc('rotate_venue_qr', { p_venue: venueId });

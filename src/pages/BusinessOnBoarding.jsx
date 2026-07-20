@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronRight, ChevronLeft, Check, Store, MapPin, Clock, FileText, CreditCard, Image, Zap, Crown } from 'lucide-react';
@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import EvLogo from '@/components/everywhere/EvLogo';
 import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/lib/AuthContext';
-import { createMyVenue, VenueError } from '@/api/venues';
+import { createMyVenue, fetchMyVenue, VenueError } from '@/api/venues';
 
 const VENUE_TYPES = ['Club / Discoteca', 'Bar / Cocktail Bar', 'Lounge', 'Festival', 'Evento privato', 'Ristorante', 'Beach club', 'Altro'];
 
@@ -20,6 +20,24 @@ export default function BusinessOnboarding() {
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const [checkingVenue, setCheckingVenue] = useState(true);
+
+  // Chi ha già un locale non deve crearne un secondo per sbaglio:
+  // a livello dati sono ammessi, ma la UI ne gestisce uno solo.
+  useEffect(() => {
+    let cancelled = false;
+    if (!authChecked || !isAuthenticated) {
+      setCheckingVenue(false);
+      return;
+    }
+    fetchMyVenue()
+      .then(venue => {
+        if (!cancelled && venue) navigate('/business', { replace: true });
+      })
+      .catch(err => console.error('Controllo locale esistente fallito:', err))
+      .finally(() => { if (!cancelled) setCheckingVenue(false); });
+    return () => { cancelled = true; };
+  }, [authChecked, isAuthenticated, navigate]);
   const [form, setForm] = useState({
     name: '', type: '', address: '', city: '',
     phone: '', email: '', website: '',
@@ -98,7 +116,7 @@ export default function BusinessOnboarding() {
     );
   }
 
-  if (!authChecked) {
+  if (!authChecked || checkingVenue) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-background">
         <div className="w-8 h-8 border-4 border-primary/20 border-t-primary rounded-full animate-spin"></div>

@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BarChart2, MessageSquare, Play, QrCode, X, ChevronRight, Check, Send, Users, TrendingUp, Clock, Zap, Crown, CreditCard, User, Settings, LogOut, Share2, Printer } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
+import { BarChart2, MessageSquare, Play, QrCode, X, ChevronRight, Check, Send, Users, TrendingUp, Clock, Zap, Crown, CreditCard, User, Settings, LogOut, Share2, Printer, RefreshCw, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import EvLogo from '@/components/everywhere/EvLogo';
 import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/lib/AuthContext';
+import { fetchMyVenue, fetchVenueStats, rotateVenueQr, checkInUrl, VenueError } from '@/api/venues';
 import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
@@ -34,6 +36,15 @@ function InsightScreen() {
   return (
     <div className="space-y-6">
       <h2 className="text-xl font-bold text-foreground">Insight</h2>
+
+      {/* Onestà verso il gestore: questi numeri non sono ancora reali */}
+      <div className="flex items-start gap-2 px-4 py-3 rounded-xl bg-secondary/60 border border-border/50">
+        <AlertTriangle className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-0.5" />
+        <p className="text-[11px] text-muted-foreground leading-relaxed">
+          Dati dimostrativi. Le statistiche reali arriveranno quando ci saranno
+          check-in e interazioni nel locale.
+        </p>
+      </div>
 
       {/* KPI grid */}
       <div className="grid grid-cols-2 gap-3">
@@ -189,153 +200,127 @@ function CommunicationsScreen() {
   );
 }
 
-function StartSessionScreen() {
-  const [phase, setPhase] = useState('config'); // config | payment | qr
-  const [config, setConfig] = useState({ duration: '5', minAge: '18', maxAge: '35', promo: '', event: '' });
-  const [paying, setPaying] = useState(false);
+function VenueQrScreen({ venue, onVenueChange }) {
+  const [rotating, setRotating] = useState(false);
+  const [confirmRotate, setConfirmRotate] = useState(false);
+  const [error, setError] = useState(null);
 
-  const updateC = (k, v) => setConfig(prev => ({ ...prev, [k]: v }));
+  const url = venue?.qrToken ? checkInUrl(venue.qrToken) : null;
 
-  const handlePay = () => {
-    setPaying(true);
-    setTimeout(() => { setPaying(false); setPhase('qr'); }, 2000);
-  };
-
-  const handlePrint = () => window.print();
-  const handleShare = () => {
-    if (navigator.share) {
-      navigator.share({ title: 'Everywhere QR Code', text: 'Entra nella sessione Everywhere!', url: window.location.href });
+  const handleRotate = async () => {
+    if (rotating) return;
+    setError(null);
+    setRotating(true);
+    try {
+      const token = await rotateVenueQr(venue.id);
+      onVenueChange({ ...venue, qrToken: token, qrRotatedAt: new Date().toISOString() });
+      setConfirmRotate(false);
+    } catch (err) {
+      setError(err instanceof VenueError ? err.message : 'Rigenerazione non riuscita. Riprova.');
+    } finally {
+      setRotating(false);
     }
   };
 
-  if (phase === 'qr') {
+  const handleShare = async () => {
+    if (!url) return;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: `Everywhere · ${venue.name}`, text: 'Entra nel locale su Everywhere', url });
+      } else {
+        await navigator.clipboard.writeText(url);
+        setError('Link copiato negli appunti.');
+      }
+    } catch {
+      /* condivisione annullata dall'utente: nessun errore da mostrare */
+    }
+  };
+
+  if (!url) {
     return (
-      <div className="flex flex-col items-center text-center space-y-6">
-        <div>
-          <h2 className="text-xl font-bold text-foreground">Sessione attiva 🎉</h2>
-          <p className="text-xs text-muted-foreground mt-1">Il QR code è pronto. Esponilo all'ingresso o condividilo digitalmente.</p>
-        </div>
-
-        {/* QR placeholder */}
-        <div className="glass rounded-2xl p-6 border border-primary/30 glow-pink">
-          <div className="w-48 h-48 mx-auto flex items-center justify-center relative">
-            {/* Simulated QR pattern */}
-            <QrCode className="w-36 h-36 text-primary opacity-80" />
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="w-10 h-10 rounded-xl bg-background flex items-center justify-center">
-                <div className="w-7 h-7 rounded-lg bg-primary/20 flex items-center justify-center">
-                  <div className="w-3 h-3 rounded-sm bg-primary" />
-                </div>
-              </div>
-            </div>
-          </div>
-          <p className="text-[11px] text-muted-foreground mt-3">Sessione · {config.duration}h · {config.minAge}–{config.maxAge} anni</p>
-        </div>
-
-        <div className="flex gap-3 w-full">
-          <Button onClick={handlePrint} variant="outline" className="flex-1 h-12 rounded-xl border-border/50 text-foreground">
-            <Printer className="w-4 h-4 mr-2" />
-            Stampa
-          </Button>
-          <Button onClick={handleShare} className="flex-1 h-12 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground glow-pink">
-            <Share2 className="w-4 h-4 mr-2" />
-            Invia / Condividi
-          </Button>
-        </div>
-
-        <p className="text-[10px] text-muted-foreground/60 leading-relaxed max-w-[280px]">
-          Puoi esporre il QR all'ingresso, al bar, in guardaroba, ai tavoli o in qualsiasi punto strategico della venue.
+      <div className="space-y-4 text-center">
+        <h2 className="text-xl font-bold text-foreground">QR del locale</h2>
+        <p className="text-sm text-muted-foreground">
+          Nessun QR disponibile per questo locale. Ricarica la pagina o contatta l'assistenza.
         </p>
       </div>
     );
   }
 
-  if (phase === 'payment') {
-    return (
-      <div className="space-y-5">
-        <div>
-          <h2 className="text-xl font-bold text-foreground">Conferma pagamento</h2>
-          <p className="text-xs text-muted-foreground mt-1">Una volta pagato, la sessione si attiva e il QR viene generato automaticamente.</p>
-        </div>
-
-        {/* Summary */}
-        <div className="glass rounded-2xl p-4 space-y-2">
-          <Row label="Durata" value={`${config.duration} ore`} />
-          <Row label="Fascia d'età" value={`${config.minAge} – ${config.maxAge} anni`} />
-          {config.promo && <Row label="Promozione" value={config.promo} />}
-          {config.event && <Row label="Evento" value={config.event} />}
-          <div className="border-t border-border/50 pt-2 mt-2 flex items-center justify-between">
-            <span className="text-sm font-semibold text-foreground">Totale</span>
-            <span className="text-lg font-bold text-primary">€50,00</span>
-          </div>
-        </div>
-
-        <div className="glass rounded-2xl p-4 space-y-3">
-          <p className="text-[11px] text-muted-foreground uppercase tracking-wider">Metodo di pagamento</p>
-          <Input placeholder="Numero carta" className="h-11 bg-secondary border-border/50 rounded-xl text-foreground placeholder:text-muted-foreground/50" />
-          <div className="flex gap-2">
-            <Input placeholder="MM/AA" className="flex-1 h-11 bg-secondary border-border/50 rounded-xl text-foreground placeholder:text-muted-foreground/50" />
-            <Input placeholder="CVV" className="w-20 h-11 bg-secondary border-border/50 rounded-xl text-foreground placeholder:text-muted-foreground/50" />
-          </div>
-        </div>
-
-        <Button onClick={handlePay} disabled={paying} className="w-full h-13 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold glow-pink">
-          {paying ? (
-            <span className="flex items-center gap-2">
-              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              Elaborazione...
-            </span>
-          ) : (
-            <span className="flex items-center gap-2">
-              <CreditCard className="w-4 h-4" />
-              Paga €50 e avvia sessione
-            </span>
-          )}
-        </Button>
-
-        <button onClick={() => setPhase('config')} className="w-full text-center text-muted-foreground text-xs underline underline-offset-2">
-          Modifica parametri
-        </button>
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-5">
+    <div className="flex flex-col items-center text-center space-y-6">
       <div>
-        <h2 className="text-xl font-bold text-foreground">Avvia sessione</h2>
-        <p className="text-xs text-muted-foreground mt-1">Configura i parametri della serata.</p>
+        <h2 className="text-xl font-bold text-foreground">QR del locale</h2>
+        <p className="text-xs text-muted-foreground mt-1">
+          Esponilo all'ingresso, al bar o ai tavoli: chi lo inquadra entra in sessione qui.
+        </p>
       </div>
 
-      <Field label="Durata sessione (ore)">
-        <div className="flex gap-2">
-          {['3', '5', '7', '8'].map(h => (
-            <button key={h} onClick={() => updateC('duration', h)} className={`flex-1 h-12 rounded-xl text-sm font-semibold border transition-all ${config.duration === h ? 'bg-primary text-primary-foreground border-primary glow-pink' : 'bg-secondary text-secondary-foreground border-border/50'}`}>{h}h</button>
-          ))}
+      {/* QR reale: contiene l'URL di check-in, quindi funziona anche con
+          la fotocamera di sistema, non solo con lo scanner dell'app */}
+      <div className="qr-print-area glass rounded-2xl p-6 border border-primary/30">
+        <div className="bg-white p-4 rounded-xl inline-block">
+          <QRCodeSVG value={url} size={192} level="M" />
         </div>
-      </Field>
-
-      <div className="flex gap-3">
-        <Field label="Età minima" className="flex-1">
-          <Input value={config.minAge} onChange={e => updateC('minAge', e.target.value)} placeholder="18" className="h-12 bg-secondary border-border/50 rounded-xl text-foreground placeholder:text-muted-foreground/50" />
-        </Field>
-        <Field label="Età massima" className="flex-1">
-          <Input value={config.maxAge} onChange={e => updateC('maxAge', e.target.value)} placeholder="35" className="h-12 bg-secondary border-border/50 rounded-xl text-foreground placeholder:text-muted-foreground/50" />
-        </Field>
+        <p className="text-sm font-semibold text-foreground mt-4">{venue.name}</p>
+        <p className="text-[11px] text-muted-foreground mt-1">
+          Sessione di {Math.round((venue.sessionMinutes ?? 300) / 60)}h per chi entra
+        </p>
       </div>
 
-      <Field label="Promozione attiva (opzionale)">
-        <Input value={config.promo} onChange={e => updateC('promo', e.target.value)} placeholder="Es. Free entry under 25 fino alle 00:00" className="h-12 bg-secondary border-border/50 rounded-xl text-foreground placeholder:text-muted-foreground/50" />
-      </Field>
+      <p className="text-[10px] text-muted-foreground/60 break-all max-w-[280px]">{url}</p>
 
-      <Field label="Evento collegato (opzionale)">
-        <Input value={config.event} onChange={e => updateC('event', e.target.value)} placeholder="Es. DJ Marco Carola b2b" className="h-12 bg-secondary border-border/50 rounded-xl text-foreground placeholder:text-muted-foreground/50" />
-      </Field>
+      <div className="flex gap-3 w-full">
+        <Button onClick={() => window.print()} variant="outline" className="flex-1 h-12 rounded-xl border-border/50 text-foreground">
+          <Printer className="w-4 h-4 mr-2" />
+          Stampa
+        </Button>
+        <Button onClick={handleShare} className="flex-1 h-12 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground glow-pink">
+          <Share2 className="w-4 h-4 mr-2" />
+          Condividi
+        </Button>
+      </div>
 
-      <Button onClick={() => setPhase('payment')} className="w-full h-13 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold glow-pink">
-        Continua al pagamento
-        <ChevronRight className="w-4 h-4 ml-1" />
-      </Button>
+      {error && <p className="text-xs text-muted-foreground">{error}</p>}
+
+      {/* Rotazione: distruttiva per i QR gia stampati, quindi con conferma */}
+      <div className="w-full border-t border-border/40 pt-5">
+        {!confirmRotate ? (
+          <button
+            onClick={() => { setError(null); setConfirmRotate(true); }}
+            className="text-xs text-muted-foreground underline underline-offset-2 flex items-center gap-1.5 mx-auto"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            Rigenera il QR
+          </button>
+        ) : (
+          <div className="glass rounded-2xl p-4 space-y-3 border border-destructive/30">
+            <div className="flex items-start gap-2 text-left">
+              <AlertTriangle className="w-4 h-4 text-destructive flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-muted-foreground">
+                Tutti i QR gia stampati o condivisi smetteranno di funzionare.
+                Chi e gia dentro resta in sessione.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                onClick={() => setConfirmRotate(false)}
+                variant="outline"
+                className="flex-1 h-10 rounded-xl border-border/50 text-foreground text-xs"
+              >
+                Annulla
+              </Button>
+              <Button
+                onClick={handleRotate}
+                disabled={rotating}
+                className="flex-1 h-10 rounded-xl bg-destructive hover:bg-destructive/90 text-destructive-foreground text-xs"
+              >
+                {rotating ? 'Rigenerazione…' : 'Conferma'}
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -348,6 +333,26 @@ export default function BusinessDashboard() {
   const [screen, setScreen] = useState(null); // null | 'insight' | 'comms' | 'session'
   const [menuOpen, setMenuOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [venue, setVenue] = useState(null);
+  const [stats, setStats] = useState({ activeNow: 0, totalSessions: 0, failed: false });
+  const [loadingVenue, setLoadingVenue] = useState(true);
+  const [venueError, setVenueError] = useState(null);
+
+  const loadVenue = useCallback(async () => {
+    setLoadingVenue(true);
+    setVenueError(null);
+    try {
+      const v = await fetchMyVenue();
+      setVenue(v);
+      if (v) setStats(await fetchVenueStats(v.id));
+    } catch (err) {
+      setVenueError(err instanceof VenueError ? err.message : 'Caricamento del locale non riuscito.');
+    } finally {
+      setLoadingVenue(false);
+    }
+  }, []);
+
+  useEffect(() => { loadVenue(); }, [loadVenue]);
 
   // Come nel profilo utente: chiude davvero la sessione Supabase
   const handleLogout = async () => {
@@ -363,8 +368,38 @@ export default function BusinessDashboard() {
     }
   };
 
-  const venueName = business?.name || 'La tua venue';
+  const venueName = venue?.name || business?.name || 'La tua venue';
   const plan = business?.plan || 'pay-per-session';
+
+  if (loadingVenue) {
+    return (
+      <div className="fixed inset-0 flex items-center justify-center bg-background">
+        <div className="w-8 h-8 border-4 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
+  // Business autenticato ma senza locale: l'onboarding non è mai stato completato
+  if (!venue) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center px-6 text-center">
+        <EvLogo size="md" />
+        <h2 className="text-xl font-bold text-foreground mt-6">Nessun locale registrato</h2>
+        <p className="text-xs text-muted-foreground mt-2 max-w-[280px] leading-relaxed">
+          {venueError || 'Completa la registrazione per ottenere il QR e iniziare a ricevere persone.'}
+        </p>
+        <Button
+          onClick={() => (venueError ? loadVenue() : navigate('/business-onboarding'))}
+          className="w-full max-w-sm h-13 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold mt-8 glow-pink"
+        >
+          {venueError ? 'Riprova' : 'Registra il tuo locale'}
+        </Button>
+        <button onClick={handleLogout} className="text-muted-foreground text-xs underline underline-offset-2 mt-6">
+          Esci
+        </button>
+      </div>
+    );
+  }
 
   if (screen) {
     return (
@@ -378,7 +413,7 @@ export default function BusinessDashboard() {
         <div className="flex-1 px-5 py-5 overflow-y-auto pb-16">
           {screen === 'insight' && <InsightScreen />}
           {screen === 'comms' && <CommunicationsScreen />}
-          {screen === 'session' && <StartSessionScreen />}
+          {screen === 'session' && <VenueQrScreen venue={venue} onVenueChange={setVenue} />}
         </div>
       </div>
     );
@@ -408,7 +443,9 @@ export default function BusinessDashboard() {
           </div>
           <div>
             <h2 className="text-base font-bold text-foreground">{venueName}</h2>
-            <p className="text-[11px] text-muted-foreground">{business?.type || 'Venue'} · {business?.city || '—'}</p>
+            <p className="text-[11px] text-muted-foreground">
+              {venue.venueType || business?.type || 'Venue'} · {venue.city || business?.city || '—'}
+            </p>
             <span className={`inline-block mt-1 text-[10px] font-semibold px-2.5 py-0.5 rounded-full ${plan === 'subscription' ? 'bg-accent/15 text-accent' : 'bg-primary/15 text-primary'}`}>
               {plan === 'subscription' ? '★ Abbonamento' : 'Pay per session'}
             </span>
@@ -431,8 +468,8 @@ export default function BusinessDashboard() {
               <Play className="w-5 h-5 text-primary-foreground fill-primary-foreground" />
             </div>
             <div className="text-left">
-              <p className="text-sm font-bold text-foreground">Avvia sessione</p>
-              <p className="text-[11px] text-muted-foreground">Configura, paga, genera il QR</p>
+              <p className="text-sm font-bold text-foreground">QR del locale</p>
+              <p className="text-[11px] text-muted-foreground">Mostra, stampa o rigenera il codice</p>
             </div>
           </div>
           <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
@@ -463,12 +500,11 @@ export default function BusinessDashboard() {
           )}
         </div>
 
-        {/* Quick stats */}
-        <div className="grid grid-cols-3 gap-2">
+        {/* Presenze reali: 0 finché nessuno ha fatto check-in */}
+        <div className="grid grid-cols-2 gap-2">
           {[
-            { label: 'Sessioni', value: INSIGHT_DATA.totalSessions },
-            { label: 'Utenti', value: INSIGHT_DATA.totalUsers },
-            { label: 'EV totali', value: INSIGHT_DATA.evSent },
+            { label: 'Presenti ora', value: stats.failed ? '—' : stats.activeNow },
+            { label: 'Check-in totali', value: stats.failed ? '—' : stats.totalSessions },
           ].map(({ label, value }) => (
             <div key={label} className="glass rounded-xl p-3 text-center">
               <p className="text-lg font-bold text-foreground">{value}</p>
@@ -476,6 +512,13 @@ export default function BusinessDashboard() {
             </div>
           ))}
         </div>
+
+        {!stats.failed && stats.totalSessions === 0 && (
+          <p className="text-[11px] text-muted-foreground/60 text-center leading-relaxed">
+            Nessun check-in finora. Esponi il QR all'ingresso: le presenze
+            compariranno qui in tempo reale.
+          </p>
+        )}
       </div>
 
       {/* Settings drawer */}

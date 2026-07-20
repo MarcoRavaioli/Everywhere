@@ -156,3 +156,24 @@
 .scan-line {
   animation: scan-line 2.5s ease-in-out infinite;
 }
+
+/* Stampa del QR del locale: solo il codice, non tutta la dashboard */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .qr-print-area,
+  .qr-print-area * {
+    visibility: visible;
+  }
+  .qr-print-area {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    margin: 0 auto;
+    border: none !important;
+    box-shadow: none !important;
+    color: #000;
+  }
+}
