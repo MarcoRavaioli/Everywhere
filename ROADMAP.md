@@ -55,12 +55,43 @@ attiva nello stesso locale o a un match. Nessun browsing esterno degli utenti.
 > L'email+password NON diventa un metodo di login reale nell'app: in produzione
 > resta solo Google/Apple, come deciso.
 
-### 3c — Lato business: locale reale + QR
-- [ ] BusinessOnBoarding: crea `profiles(account_type=business)` + `venues` + riga `venue_qr_tokens`
-- [ ] BusinessDashboard: mostra il QR del locale (libreria `qrcode.react`), presenze attive, CRUD `venue_messages`
-- [ ] Rotazione QR token dall'owner
-- [ ] **Test:** onboarding completo → righe in `venues`+`venue_qr_tokens`; il QR
-      si vede in dashboard; un utente normale non vede il token via API
+### 3c-1 — Onboarding business: locale reale (da testare)
+- [x] RPC `create_my_venue` atomica: profilo business + `venues` + `venue_qr_tokens`;
+      `owner_id` sempre `auth.uid()`, token generato dal server, rifiuto se
+      l'account è già `personal`
+- [x] RPC `rotate_venue_qr` (solo owner, nuovo token lato server)
+- [x] Gate di login prima del form + intento `business` memorizzato, così chi
+      accede a metà strada non finisce nell'onboarding personale
+- [x] **Fix trovato dal test:** la prima versione accettava `city`/`address`
+      e non li scriveva. Aggiunte colonne `venue_type, address, city, phone,
+      email, website, hours_open, hours_close` (+ limiti di lunghezza lato
+      DB e `maxLength` nel form)
+- [ ] **Test sicurezza (Marco):** anon respinto; token altrui non leggibile;
+      insert diretto di un venue con `owner_id` altrui; rotazione QR di un
+      locale non proprio; account già personale che registra un locale
+- [ ] **Ancora NON persistiti:** P.IVA e referente amministrativo (identità
+      di fatturazione → arrivano con Stripe, Step 6); logo e copertina (oggi
+      sono campi URL liberi: vanno sostituiti da upload su Storage come gli
+      avatar, non da URL arbitrari)
+
+### 3c-2 — Dashboard business
+- [ ] QR reale del locale (`qrcode.react`) su URL `/checkin?t=<token>`, stampa/condivisione
+- [ ] Presenze attive reali (conteggio sessioni aperte del venue) con empty state
+- [ ] CRUD `venue_messages` al posto dei mock; rimozione dei finti campi carta
+- [ ] Rotazione QR dalla UI, con avviso che invalida i QR già esposti
+- [ ] Se il business ha già un locale, l'onboarding porta alla dashboard
+      invece di crearne un secondo
+- [ ] **Test:** onboarding completo → QR visibile in dashboard; un utente
+      normale non vede il token via API
+
+### 3c-3 — Geocoding (prima che "locali vicini" funzioni)
+- [ ] `venues.location` oggi è sempre `null`: `venues_nearby()` filtra
+      `location is not null`, quindi i locali creati NON compaiono mai nella
+      ricerca per vicinanza (nessun crash, semplicemente invisibili)
+- [ ] Serve convertire `city + address` in lat/lng (es. Nominatim/OSM lato
+      Edge Function, o inserimento manuale delle coordinate dalla dashboard)
+- [ ] **Test:** locale con indirizzo reale → compare in `venues_nearby()` dal
+      raggio giusto e non da uno sbagliato
 
 ### 3d — Check-in e sessione reale
 - [ ] Formato QR: URL `https://<app>/checkin?t=<token>` (funziona anche da fotocamera nativa, pronto per deep link Capacitor)

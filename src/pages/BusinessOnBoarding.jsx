@@ -41,8 +41,14 @@ export default function BusinessOnboarding() {
     try {
       const venue = await createMyVenue({
         name: form.name,
-        city: form.city,
+        venueType: form.type,
         address: form.address,
+        city: form.city,
+        phone: form.phone,
+        email: form.email,
+        website: form.website,
+        hoursOpen: form.hoursOpen,
+        hoursClose: form.hoursClose,
       });
       if (setBusiness) setBusiness({ ...form, plan, venueId: venue.venue_id });
       localStorage.removeItem('ew_signup_intent');
@@ -132,7 +138,7 @@ export default function BusinessOnboarding() {
               </div>
 
               <Field label="Nome attività *">
-                <Input value={form.name} onChange={e => update('name', e.target.value)} placeholder="Es. Moon Club" className="h-12 bg-secondary border-border/50 rounded-xl text-foreground placeholder:text-muted-foreground/50" />
+                <Input value={form.name} onChange={e => update('name', e.target.value)} maxLength={120} placeholder="Es. Moon Club" className="h-12 bg-secondary border-border/50 rounded-xl text-foreground placeholder:text-muted-foreground/50" />
               </Field>
 
               <Field label="Tipologia venue *">
@@ -150,11 +156,11 @@ export default function BusinessOnboarding() {
               </Field>
 
               <Field label="Indirizzo">
-                <Input value={form.address} onChange={e => update('address', e.target.value)} placeholder="Via Roma 12" className="h-12 bg-secondary border-border/50 rounded-xl text-foreground placeholder:text-muted-foreground/50" />
+                <Input value={form.address} onChange={e => update('address', e.target.value)} maxLength={200} placeholder="Via Roma 12" className="h-12 bg-secondary border-border/50 rounded-xl text-foreground placeholder:text-muted-foreground/50" />
               </Field>
 
               <Field label="Città *">
-                <Input value={form.city} onChange={e => update('city', e.target.value)} placeholder="Milano" className="h-12 bg-secondary border-border/50 rounded-xl text-foreground placeholder:text-muted-foreground/50" />
+                <Input value={form.city} onChange={e => update('city', e.target.value)} maxLength={100} placeholder="Milano" className="h-12 bg-secondary border-border/50 rounded-xl text-foreground placeholder:text-muted-foreground/50" />
               </Field>
             </motion.div>
           )}
@@ -166,20 +172,20 @@ export default function BusinessOnboarding() {
                 <p className="text-xs text-muted-foreground">Come possono trovarti i tuoi utenti?</p>
               </div>
               <Field label="Telefono">
-                <Input value={form.phone} onChange={e => update('phone', e.target.value)} placeholder="+39 02 123456" className="h-12 bg-secondary border-border/50 rounded-xl text-foreground placeholder:text-muted-foreground/50" />
+                <Input value={form.phone} onChange={e => update('phone', e.target.value)} maxLength={40} placeholder="+39 02 123456" className="h-12 bg-secondary border-border/50 rounded-xl text-foreground placeholder:text-muted-foreground/50" />
               </Field>
               <Field label="Email di contatto">
-                <Input value={form.email} onChange={e => update('email', e.target.value)} placeholder="info@moonclub.it" className="h-12 bg-secondary border-border/50 rounded-xl text-foreground placeholder:text-muted-foreground/50" />
+                <Input value={form.email} onChange={e => update('email', e.target.value)} maxLength={200} type="email" placeholder="info@moonclub.it" className="h-12 bg-secondary border-border/50 rounded-xl text-foreground placeholder:text-muted-foreground/50" />
               </Field>
               <Field label="Sito web">
-                <Input value={form.website} onChange={e => update('website', e.target.value)} placeholder="www.moonclub.it" className="h-12 bg-secondary border-border/50 rounded-xl text-foreground placeholder:text-muted-foreground/50" />
+                <Input value={form.website} onChange={e => update('website', e.target.value)} maxLength={200} placeholder="www.moonclub.it" className="h-12 bg-secondary border-border/50 rounded-xl text-foreground placeholder:text-muted-foreground/50" />
               </Field>
               <div className="flex gap-3">
                 <Field label="Apertura" className="flex-1">
-                  <Input value={form.hoursOpen} onChange={e => update('hoursOpen', e.target.value)} placeholder="22:00" className="h-12 bg-secondary border-border/50 rounded-xl text-foreground placeholder:text-muted-foreground/50" />
+                  <Input value={form.hoursOpen} onChange={e => update('hoursOpen', e.target.value)} maxLength={20} placeholder="22:00" className="h-12 bg-secondary border-border/50 rounded-xl text-foreground placeholder:text-muted-foreground/50" />
                 </Field>
                 <Field label="Chiusura" className="flex-1">
-                  <Input value={form.hoursClose} onChange={e => update('hoursClose', e.target.value)} placeholder="05:00" className="h-12 bg-secondary border-border/50 rounded-xl text-foreground placeholder:text-muted-foreground/50" />
+                  <Input value={form.hoursClose} onChange={e => update('hoursClose', e.target.value)} maxLength={20} placeholder="05:00" className="h-12 bg-secondary border-border/50 rounded-xl text-foreground placeholder:text-muted-foreground/50" />
                 </Field>
               </div>
             </motion.div>

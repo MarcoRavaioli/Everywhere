@@ -12,6 +12,7 @@ const DB_ERRORS = {
   account_already_personal:
     'Questo account è già registrato come utente personale. Usa un altro account Google per il locale.',
   not_venue_owner: 'Non sei il proprietario di questo locale.',
+  venue_field_too_long: 'Uno dei campi inseriti è troppo lungo. Accorcialo e riprova.',
 };
 
 function toVenueError(error, fallback) {
@@ -22,11 +23,20 @@ function toVenueError(error, fallback) {
 
 // Crea profilo business + venue + token QR in un'unica transazione lato server.
 // owner_id e token non sono controllabili dal client (v. migration).
-export async function createMyVenue({ name, city, address, sessionMinutes } = {}) {
+export async function createMyVenue({
+  name, venueType, address, city, phone, email, website,
+  hoursOpen, hoursClose, sessionMinutes,
+} = {}) {
   const { data, error } = await supabase.rpc('create_my_venue', {
     p_name: name,
-    p_city: city ?? null,
+    p_venue_type: venueType ?? null,
     p_address: address ?? null,
+    p_city: city ?? null,
+    p_phone: phone ?? null,
+    p_email: email ?? null,
+    p_website: website ?? null,
+    p_hours_open: hoursOpen ?? null,
+    p_hours_close: hoursClose ?? null,
     p_session_minutes: sessionMinutes ?? 300,
   });
   if (error) {
@@ -58,6 +68,15 @@ export async function fetchMyVenue() {
   return {
     id: data.id,
     name: data.name,
+    venueType: data.venue_type,
+    address: data.address,
+    city: data.city,
+    phone: data.phone,
+    email: data.email,
+    website: data.website,
+    hoursOpen: data.hours_open,
+    hoursClose: data.hours_close,
+    hasLocation: !!data.location, // false finché non c'è il geocoding
     sessionMinutes: data.session_duration_minutes,
     createdAt: data.created_at,
     qrToken: data.venue_qr_tokens?.[0]?.token ?? null,
