@@ -1,26 +1,28 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { ArrowLeft, Zap, Keyboard } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import EvLogo from '@/components/everywhere/EvLogo';
+import { isValidToken } from '@/api/sessions';
 
 export default function Scanner() {
   const navigate = useNavigate();
-  const [showManualInput, setShowManualInput] = useState(false);
   const [manualCode, setManualCode] = useState('');
-  const [scanning, setScanning] = useState(false);
+  const [error, setError] = useState(null);
 
-  const handleScan = () => {
-    setScanning(true);
-    setTimeout(() => {
-      navigate('/session-confirm');
-    }, 1500);
-  };
-
+  // La fotocamera arriva nello step successivo: per ora si incolla il
+  // codice, oppure si inquadra il QR con la fotocamera del telefono
+  // (il QR contiene l'URL completo, quindi apre l'app da solo).
   const handleManualSubmit = () => {
-    navigate('/session-confirm');
+    const code = manualCode.trim();
+    if (!isValidToken(code)) {
+      setError('Codice non valido: deve essere il codice completo del QR.');
+      return;
+    }
+    setError(null);
+    navigate(`/checkin?t=${encodeURIComponent(code)}`);
   };
 
   return (
@@ -77,72 +79,36 @@ export default function Scanner() {
           </div>
         </motion.div>
 
-        {/* Scan button (demo) */}
-        <AnimatePresence>
-          {!scanning ? (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="space-y-3 w-full max-w-sm"
+        <div className="space-y-3 w-full max-w-sm">
+          <p className="text-white/50 text-xs text-center flex items-center justify-center gap-1.5">
+            <Keyboard className="w-3.5 h-3.5" />
+            Inserisci il codice del QR
+          </p>
+
+          <div className="flex gap-2">
+            <Input
+              value={manualCode}
+              onChange={(e) => { setManualCode(e.target.value); setError(null); }}
+              onKeyDown={(e) => e.key === 'Enter' && handleManualSubmit()}
+              placeholder="Codice della serata"
+              className="flex-1 h-11 bg-white/5 border-white/10 rounded-xl text-white placeholder:text-white/30"
+            />
+            <Button
+              onClick={handleManualSubmit}
+              disabled={!manualCode.trim()}
+              className="h-11 px-5 rounded-xl bg-primary"
             >
-              <Button
-                onClick={handleScan}
-                className="w-full h-13 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold glow-pink"
-              >
-                Simula Scansione
-              </Button>
+              Entra
+            </Button>
+          </div>
 
-              <button
-                onClick={() => setShowManualInput(!showManualInput)}
-                className="w-full text-center text-white/40 text-xs flex items-center justify-center gap-1"
-              >
-                <Keyboard className="w-3 h-3" />
-                Inserisci codice manualmente
-              </button>
+          {error && <p className="text-destructive text-xs text-center">{error}</p>}
 
-              <AnimatePresence>
-                {showManualInput && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    className="flex gap-2"
-                  >
-                    <Input
-                      value={manualCode}
-                      onChange={(e) => setManualCode(e.target.value)}
-                      placeholder="Codice venue"
-                      className="flex-1 h-11 bg-white/5 border-white/10 rounded-xl text-white placeholder:text-white/30"
-                    />
-                    <Button
-                      onClick={handleManualSubmit}
-                      className="h-11 px-5 rounded-xl bg-primary"
-                    >
-                      Entra
-                    </Button>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              <button
-                onClick={() => navigate('/session-confirm')}
-                className="w-full text-center text-white/30 text-xs underline underline-offset-2 pt-2"
-              >
-                Continua come ospite
-              </button>
-            </motion.div>
-          ) : (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="flex flex-col items-center"
-            >
-              <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-              <p className="text-white/60 text-sm mt-3">Scansione in corso...</p>
-            </motion.div>
-          )}
-        </AnimatePresence>
+          <p className="text-white/30 text-[11px] text-center leading-relaxed pt-1">
+            Puoi anche inquadrare il QR con la fotocamera del telefono:
+            aprirà direttamente l'app.
+          </p>
+        </div>
       </div>
     </div>
   );

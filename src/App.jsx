@@ -14,7 +14,7 @@ import Welcome from '@/pages/Welcome';
 import CreateProfile from '@/pages/CreateProfile';
 import Home from '@/pages/Home';
 import Scanner from '@/pages/Scanner';
-import SessionConfirm from '@/pages/SessionConfirm';
+import CheckIn from '@/pages/CheckIn';
 import Session from '@/pages/Session';
 import PersonDetail from '@/pages/PersonDetail';
 import EVPage from '@/pages/EVPage';
@@ -45,7 +45,8 @@ const AuthenticatedApp = () => {
       <Route path="/create-profile" element={<CreateProfile />} />
       <Route path="/home" element={<Home />} />
       <Route path="/scanner" element={<Scanner />} />
-      <Route path="/session-confirm" element={<SessionConfirm />} />
+      {/* Destinazione dei QR delle serate */}
+      <Route path="/checkin" element={<CheckIn />} />
       {/* Il profilo si cura anche da casa: fuori da SessionLayout, che
           richiede una sessione attiva in un locale */}
       <Route path="/profile" element={<Profile />} />

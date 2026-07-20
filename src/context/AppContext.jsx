@@ -1,16 +1,10 @@
-import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { fetchMyProfile, upsertMyProfile, rowToUser } from '@/api/profiles';
 import { getAvatarUrl, uploadMyAvatar } from '@/api/avatars';
+import { fetchMySession, endMySession } from '@/api/sessions';
 
 const AppContext = createContext(null);
-
-const MOCK_VENUE = {
-  id: 'moon-club',
-  name: 'MOON CLUB',
-  image: 'https://images.unsplash.com/photo-1566417713940-fe7c7e31e5f2?w=800&q=80',
-  sessionDuration: 5 * 60 * 60,
-};
 
 const MOCK_PEOPLE = [
   { id: '1', name: 'Sofia', age: 22, bio: 'Ama i concerti e il buon vino', photo: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&q=80', interests: ['Musica', 'Viaggi', 'Aperitivi'], status: 'single' },
@@ -52,9 +46,10 @@ export function AppProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [profileChecked, setProfileChecked] = useState(false);
   const [business, setBusiness] = useState(null);
-  const [isInSession, setIsInSession] = useState(false);
-  const [currentVenue, setCurrentVenue] = useState(null);
-  const [sessionTimeLeft, setSessionTimeLeft] = useState(0);
+  // Sessione reale letta dal DB: sopravvive al reload
+  const [session, setSession] = useState(null);
+  const [sessionChecked, setSessionChecked] = useState(false);
+  const [nowTick, setNowTick] = useState(() => Date.now());
   const [people] = useState(MOCK_PEOPLE);
   const [sentEVs, setSentEVs] = useState([]);
   // Demo: alcune persone hanno già inviato un EV all'utente, alcune con nota
@@ -65,25 +60,50 @@ export function AppProvider({ children }) {
   const [venueMessages] = useState(MOCK_VENUE_MESSAGES);
   const [drinkNotifications, setDrinkNotifications] = useState([]);
   const [activeChats, setActiveChats] = useState({}); // personId -> messages[]
-  const timerRef = useRef(null);
-
-  // Session timer
+  // Il tempo rimasto si calcola dalla scadenza reale invece di scalare
+  // un contatore: così un reload (o il telefono in tasca) non lo falsa.
   useEffect(() => {
-    if (isInSession && sessionTimeLeft > 0) {
-      timerRef.current = setInterval(() => {
-        setSessionTimeLeft(prev => {
-          if (prev <= 1) {
-            clearInterval(timerRef.current);
-            setIsInSession(false);
-            setCurrentVenue(null);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
+    if (!session) return;
+    const id = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [session]);
+
+  const sessionTimeLeft = session
+    ? Math.max(0, Math.floor((new Date(session.expiresAt).getTime() - nowTick) / 1000))
+    : 0;
+  const isInSession = !!session && sessionTimeLeft > 0;
+  const currentVenue = session?.venue ?? null;
+  const currentNight = session?.night ?? null;
+
+  // Sessione scaduta mentre l'app era aperta: si esce da soli
+  useEffect(() => {
+    if (session && sessionTimeLeft === 0) setSession(null);
+  }, [session, sessionTimeLeft]);
+
+  const refreshSession = useCallback(async () => {
+    if (!authUser) {
+      setSession(null);
+      setSessionChecked(true);
+      return null;
     }
-    return () => clearInterval(timerRef.current);
-  }, [isInSession, sessionTimeLeft]);
+    try {
+      const s = await fetchMySession();
+      setSession(s);
+      return s;
+    } catch (err) {
+      console.error('Caricamento sessione fallito:', err);
+      setSession(null);
+      return null;
+    } finally {
+      setSessionChecked(true);
+    }
+  }, [authUser]);
+
+  // All'avvio (e a ogni cambio utente) recupera la sessione dal DB
+  useEffect(() => {
+    if (!authChecked) return;
+    refreshSession();
+  }, [authChecked, refreshSession]);
 
   // Carica il profilo reale da Supabase quando cambia l'utente autenticato.
   // profileChecked resta false finché l'auth non è risolta E il profilo non è
@@ -96,9 +116,7 @@ export function AppProvider({ children }) {
       // Logout: azzera lo stato dell'app, altrimenti chi accede dopo
       // eredita sessione, locale e chat dell'utente precedente
       setBusiness(null);
-      setIsInSession(false);
-      setCurrentVenue(null);
-      setSessionTimeLeft(0);
+      setSession(null);
       setSentEVs([]);
       setMatchedEVs([]);
       setActiveChats({});
@@ -199,18 +217,17 @@ export function AppProvider({ children }) {
     return { path, url };
   }, []);
 
-  const startSession = useCallback(() => {
-    setCurrentVenue(MOCK_VENUE);
-    setSessionTimeLeft(MOCK_VENUE.sessionDuration);
-    setIsInSession(true);
-  }, []);
-
-  const endSession = useCallback(() => {
-    clearInterval(timerRef.current);
-    setIsInSession(false);
-    setCurrentVenue(null);
-    setSessionTimeLeft(0);
-  }, []);
+  // Uscita volontaria dal locale: chiude la sessione anche sul server,
+  // altrimenti si resterebbe visibili agli altri presenti.
+  const endSession = useCallback(async () => {
+    try {
+      if (authUser) await endMySession();
+    } catch (err) {
+      console.error('Chiusura sessione fallita:', err);
+    } finally {
+      setSession(null);
+    }
+  }, [authUser]);
 
   // Demo: note allegate agli EV già ricevuti
   const [evNotes, setEvNotes] = useState({
@@ -301,8 +318,8 @@ export function AppProvider({ children }) {
     <AppContext.Provider value={{
       currentUser, setCurrentUser, profileChecked, loginAsGuest, createProfile, updateProfile, uploadAvatar, refreshProfile,
       business, setBusiness,
-      isInSession, currentVenue, sessionTimeLeft, formatTime,
-      startSession, endSession,
+      isInSession, currentVenue, currentNight, sessionTimeLeft, formatTime,
+      session, sessionChecked, refreshSession, endSession,
       people,
       sentEVs, sendEV, sendEVBack, ignoreEV,
       evNotes,

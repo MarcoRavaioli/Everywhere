@@ -186,16 +186,28 @@ Correzioni al modello: una serata è **una festa con più punti di ingresso**
 - [ ] **Test:** locale con indirizzo reale → compare in `venues_nearby()` dal
       raggio giusto e non da uno sbagliato
 
-### 3d — Check-in e sessione reale (prossimo)
-- [x] Formato QR deciso: URL `/checkin?t=<token>` (già generato dalla dashboard)
-- [ ] Pagina `/checkin` che legge il token dall'URL (oggi è una 404)
-- [ ] Scanner con camera reale (`html5-qrcode` o simile) + fallback manuale
-- [ ] SessionConfirm mostra locale e serata veri; conferma → RPC `check_in`
-- [ ] Sessione in AppContext letta dal DB (sopravvive al reload); `endSession` → RPC
-- [ ] Errori distinti e leggibili: QR invalido vs serata non aperta
-- [ ] **Test:** scansiono il QR di una serata aperta → sessione attiva col
-      timer giusto → reload: ancora attiva → esco: chiusa; QR di serata chiusa
-      o non ancora aperta → errore chiaro
+### ✅ 3d-1 — Check-in reale via URL (implementato, da testare)
+- [x] Pagina `/checkin?t=<token>`: token non valido, accesso richiesto,
+      profilo mancante, ingresso in corso, errore del server, successo
+- [x] Chi arriva senza account accede **restando sul QR** (Google torna
+      esattamente lì); chi non ha profilo lo crea e viene riportato al check-in
+- [x] Sessione reale in AppContext letta dal DB: sopravvive al reload
+- [x] Timer calcolato dalla scadenza reale, non da un contatore che scala
+      (un reload o il telefono in tasca non lo falsano più)
+- [x] `endSession` chiama la RPC: uscendo si smette davvero di essere visibili
+- [x] Errori distinti: QR sconosciuto, serata non aperta, QR non ancora
+      attivo, QR scaduto
+- [x] Rimossi il flusso mock `SessionConfirm` e la "Simula Scansione"
+- [ ] **Test:** QR di una serata aperta → dentro col locale e la serata
+      giusti → reload: ancora dentro → "esci": fuori davvero; QR di serata
+      chiusa → messaggio chiaro; secondo QR della stessa serata → cambio
+      sala senza far ripartire il tempo
+
+### 3d-2 — Scanner con fotocamera
+- [ ] Lettura QR dalla fotocamera in-app (oggi: inserimento manuale del
+      codice, oppure si inquadra il QR con la fotocamera di sistema che apre
+      l'app da sola, dato che il QR contiene l'URL completo)
+- [ ] Gestione permesso fotocamera negato, e HTTPS richiesto dai browser
 
 ### 3e — Persone nel locale + EV + match (Realtime)
 - [ ] RPC `people_in_my_venue()` (lista profili con sessione attiva nel mio locale — manca nello schema, va aggiunta con migration)

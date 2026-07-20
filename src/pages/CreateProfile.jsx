@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Camera, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,9 @@ import { DEFAULT_AVATAR, AvatarError } from '@/api/avatars';
 
 export default function CreateProfile() {
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  // Chi arriva da un QR torna al check-in invece di perdere il codice
+  const nextPath = params.get('next');
   const { createProfile, currentUser, uploadAvatar } = useApp();
   const [form, setForm] = useState({
     name: '',
@@ -86,7 +89,8 @@ export default function CreateProfile() {
         interests: selectedTopics,
         photoPath: form.photoPath,
       });
-      navigate('/home');
+      // Solo percorsi interni: un "next" arbitrario sarebbe un redirect aperto
+      navigate(nextPath?.startsWith('/') ? nextPath : '/home', { replace: true });
     } catch (err) {
       console.error('Creazione profilo fallita:', err);
       setError('Salvataggio non riuscito. Controlla la connessione e riprova.');

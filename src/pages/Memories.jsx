@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MapPin, Users, Send, X, CalendarDays, LocateFixed, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -223,14 +224,17 @@ function EventCard({ event, index, onAnnouncementOpen }) {
 }
 
 export default function Memories() {
-  const { memories, events, startSession } = useApp();
+  const navigate = useNavigate();
+  const { memories, events } = useApp();
   const [activeTab, setActiveTab] = useState('known');
   const [activeAnnouncement, setActiveAnnouncement] = useState(null); // { event }
 
   const handleAnnouncementOpen = (event) => setActiveAnnouncement({ event });
   const handleAnnouncementClose = () => setActiveAnnouncement(null);
-  const handlePartecipa = (event) => {
-    startSession();
+  // Alle serate si entra solo scansionando il QR nel locale: da qui
+  // si va allo scanner, non si "entra" da remoto.
+  const handlePartecipa = () => {
+    navigate('/scanner');
   };
 
   return (

@@ -80,11 +80,17 @@ export const AuthProvider = ({ children }) => {
     };
   }, []);
 
-  const signInWithGoogle = useCallback(async () => {
+  // redirectTo permette di tornare esattamente dov'eri: serve al
+  // check-in, dove perdere il token del QR significherebbe riscansionare.
+  const signInWithGoogle = useCallback(async (redirectTo) => {
     setAuthError(null);
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: window.location.origin },
+      // usato anche come onClick={signInWithGoogle}: in quel caso arriva
+      // l'evento del click, non una stringa
+      options: {
+        redirectTo: typeof redirectTo === 'string' ? redirectTo : window.location.origin,
+      },
     });
     if (error) {
       setAuthError({ type: 'oauth_error', message: error.message });
