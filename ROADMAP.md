@@ -94,13 +94,38 @@ attiva nello stesso locale o a un match. Nessun browsing esterno degli utenti.
       ne accetta 2 (`promo`/`info`) → serve migration o riduzione della UI
 - [ ] Si fa insieme alla pagina Locale (3g), che è dove i messaggi si vedono
 
-### ❓ Decisione aperta — "sessione del locale" come entità
-Il modello dati attuale: il locale ha un QR permanente, e la "sessione" è
-del singolo utente (check-in con `expires_at`). La UI demo invece prevedeva
-sessioni serali del locale, a pagamento (€50/serata).
-Serve decidere prima dello Step 6: il piano "pay per session" richiede
-un'entità `venue_sessions` (inizio/fine serata) da fatturare, oppure si
-passa a un modello ad abbonamento sul locale.
+### ✅ 3c-3 — Serate come entità centrale (DECISO e implementato, da testare)
+
+Modello di business deciso: l'introito viene dalle serate, vendute come
+**serata singola** o **abbonamento con serate illimitate**.
+
+```
+piano (subscription | pay_per_night)
+  └── locale (venues)
+        └── serate (nights) ← il QR sta QUI
+              └── check-in utenti (sessions)
+```
+
+Regole scelte: apertura/chiusura **manuale**; il QR funziona **solo a serata
+aperta**; la chiusura **termina tutte le sessioni** dentro; **una sola serata
+aperta per locale** (vincolo nel DB).
+
+- [x] Tabelle `nights` + `night_qr_tokens`; `sessions.night_id`; `venues.plan`
+- [x] RPC `create_night` / `open_night` / `close_night` / `rotate_night_qr`
+- [x] `check_in` risolve il token → serata, e rifiuta se non è aperta
+- [x] Visibilità profili ancorata alla **serata** (`active_session_night`):
+      chiusa la serata le persone smettono di vedersi, anche se la sessione
+      non è scaduta
+- [x] `venue_qr_tokens` e `rotate_venue_qr` **rimossi** (QR di locale superato)
+- [x] Dashboard: lista serate, crea/apri/chiudi, QR per serata, rotazione
+- [x] Il piano scelto in onboarding viene salvato su `venues.plan`
+- [ ] **Test:** creo una serata → QR generato ma non attivo; apro → il QR
+      funziona; provo ad aprirne una seconda → rifiutata; chiudo → sessioni
+      terminate e QR non più valido
+- [ ] **Step 6:** `open_night` dovrà pretendere `payment_status in
+      ('paid','waived')`. Oggi non blocca, altrimenti nulla sarebbe testabile
+      senza Stripe. La colonna esiste già e viene valorizzata ('waived' con
+      abbonamento, 'pending' con serata singola)
 
 ### 3c-3 — Geocoding (prima che "locali vicini" funzioni)
 - [ ] `venues.location` oggi è sempre `null`: `venues_nearby()` filtra
@@ -111,13 +136,16 @@ passa a un modello ad abbonamento sul locale.
 - [ ] **Test:** locale con indirizzo reale → compare in `venues_nearby()` dal
       raggio giusto e non da uno sbagliato
 
-### 3d — Check-in e sessione reale
-- [ ] Formato QR: URL `https://<app>/checkin?t=<token>` (funziona anche da fotocamera nativa, pronto per deep link Capacitor)
-- [ ] Scanner con camera reale (`html5-qrcode` o simile) + fallback inserimento manuale
-- [ ] SessionConfirm mostra il locale vero; conferma → RPC `check_in`
-- [ ] Sessione in AppContext letta dal DB (`expires_at` reale, sopravvive al reload); `endSession` → RPC
-- [ ] **Test:** scansiono il QR del mio locale di prova → sessione attiva col
-      timer giusto → reload: ancora attiva → esco: chiusa; QR invalido → errore chiaro
+### 3d — Check-in e sessione reale (prossimo)
+- [x] Formato QR deciso: URL `/checkin?t=<token>` (già generato dalla dashboard)
+- [ ] Pagina `/checkin` che legge il token dall'URL (oggi è una 404)
+- [ ] Scanner con camera reale (`html5-qrcode` o simile) + fallback manuale
+- [ ] SessionConfirm mostra locale e serata veri; conferma → RPC `check_in`
+- [ ] Sessione in AppContext letta dal DB (sopravvive al reload); `endSession` → RPC
+- [ ] Errori distinti e leggibili: QR invalido vs serata non aperta
+- [ ] **Test:** scansiono il QR di una serata aperta → sessione attiva col
+      timer giusto → reload: ancora attiva → esco: chiusa; QR di serata chiusa
+      o non ancora aperta → errore chiaro
 
 ### 3e — Persone nel locale + EV + match (Realtime)
 - [ ] RPC `people_in_my_venue()` (lista profili con sessione attiva nel mio locale — manca nello schema, va aggiunta con migration)

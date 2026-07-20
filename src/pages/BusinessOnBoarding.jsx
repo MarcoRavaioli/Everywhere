@@ -67,6 +67,8 @@ export default function BusinessOnboarding() {
         website: form.website,
         hoursOpen: form.hoursOpen,
         hoursClose: form.hoursClose,
+        // 'subscription' = serate illimitate; 'pay_per_night' = serata singola
+        plan: plan === 'subscription' ? 'subscription' : 'pay_per_night',
       });
       if (setBusiness) setBusiness({ ...form, plan, venueId: venue.venue_id });
       localStorage.removeItem('ew_signup_intent');
