@@ -106,9 +106,10 @@ piano (subscription | pay_per_night)
               └── check-in utenti (sessions)
 ```
 
-Regole scelte: apertura/chiusura **manuale**; il QR funziona **solo a serata
-aperta**; la chiusura **termina tutte le sessioni** dentro; **una sola serata
-aperta per locale** (vincolo nel DB).
+Regole scelte (aggiornate in 3c-4): la serata ha **orari programmati** di
+apertura/chiusura **più** override manuale; il QR funziona **solo a serata
+attiva**; la chiusura **termina tutte le sessioni** e spegne tutti i QR della
+serata; **più serate aperte per locale sono ammesse**.
 
 - [x] Tabelle `nights` + `night_qr_tokens`; `sessions.night_id`; `venues.plan`
 - [x] RPC `create_night` / `open_night` / `close_night` / `rotate_night_qr`
@@ -126,6 +127,37 @@ aperta per locale** (vincolo nel DB).
       ('paid','waived')`. Oggi non blocca, altrimenti nulla sarebbe testabile
       senza Stripe. La colonna esiste già e viene valorizzata ('waived' con
       abbonamento, 'pending' con serata singola)
+
+### ✅ 3c-4 — Più QR per serata + orari (implementato, da testare)
+
+Correzioni al modello: una serata è **una festa con più punti di ingresso**
+(QR generale + QR per sala/zona), ognuno con la propria finestra oraria.
+
+- [x] Tabella `night_qr_codes` (molti QR per serata, con `label`,
+      `starts_at`, `ends_at`); i token esistenti sono stati migrati, non persi
+- [x] `nights.opens_at` / `closes_at` (orari programmati) accanto a
+      `opened_at` / `closed_at` (override manuale); via la colonna `status`,
+      lo stato ora si **deriva**: chiusura manuale > tutto, apertura manuale
+      anticipa l'orario, l'orario di chiusura vale comunque
+- [x] Caduto il vincolo "una sola serata aperta per locale"
+- [x] `sessions.qr_code_id`: si registra da quale QR è entrata la persona
+- [x] Riscansionando un altro QR della **stessa** serata la sessione non
+      viene ricreata: cambia solo la posizione (l'orario d'ingresso resta)
+- [x] La sessione non sopravvive alla chiusura programmata della serata
+      (`expires_at` viene troncato a `closes_at`)
+- [x] Chi entra da QR diversi della stessa serata **si vede**: la visibilità
+      resta ancorata alla serata, non al QR
+- [x] RPC `create_night_qr` / `update_night_qr` / `delete_night_qr` /
+      `rotate_night_qr` (per singolo QR) / `update_night_schedule`;
+      non si può eliminare l'ultimo QR di una serata
+- [x] Dashboard: serate con orari, elenco QR per serata, presenze per sala
+- [ ] **Test:** QR di sale diverse → le persone si vedono tra loro; QR fuori
+      finestra → errore; riscansione nella stessa serata → cambia sala senza
+      perdere la sessione; chiusura serata → tutti i QR spenti insieme
+
+### 3e — Lista partecipanti: tutta la serata + la mia sala
+- [ ] Grazie a `sessions.qr_code_id`, la lista mostrerà sia tutti i presenti
+      alla serata sia chi è nella stessa sala in questo momento
 
 ### 3c-3 — Geocoding (prima che "locali vicini" funzioni)
 - [ ] `venues.location` oggi è sempre `null`: `venues_nearby()` filtra

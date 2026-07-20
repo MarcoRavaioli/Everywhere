@@ -16,9 +16,14 @@ const DB_ERRORS = {
   invalid_plan: 'Piano non valido.',
   night_title_too_long: 'Il nome della serata è troppo lungo.',
   night_already_closed: 'Questa serata è già stata chiusa: creane una nuova.',
-  another_night_open: 'Hai già una serata aperta. Chiudila prima di aprirne un\'altra.',
-  night_not_open: 'La serata non è aperta: il QR non è ancora attivo.',
+  night_not_open: 'La serata non è aperta: il QR non è attivo.',
   invalid_qr_token: 'QR non valido.',
+  qr_not_yet_active: 'Questo QR non è ancora attivo: riprova più tardi.',
+  qr_expired: 'Questo QR non è più valido.',
+  qr_label_required: 'Dai un nome al QR (es. "Sala principale").',
+  qr_label_too_long: 'Il nome del QR è troppo lungo.',
+  invalid_time_window: 'L\'orario di fine deve essere successivo a quello di inizio.',
+  last_qr_of_night: 'Non puoi eliminare l\'unico QR della serata.',
 };
 
 function toVenueError(error, fallback) {
@@ -115,20 +120,58 @@ export async function fetchVenueStats(venueId) {
   return { activeNow: active.count ?? 0, totalSessions: total.count ?? 0, failed: false };
 }
 
-// ─── Serate ────────────────────────────────────────────────────────────
-// Ogni serata ha il proprio QR. Il QR viene creato subito (così si può
-// stampare in anticipo) ma fa entrare le persone solo a serata aperta.
+// ─── Serate e QR ───────────────────────────────────────────────────────
+// Una serata ha PIÙ QR (ingresso principale, sale, zone): sono punti di
+// distribuzione della stessa festa, chi entra da QR diversi si vede.
+// Ogni QR ha la sua finestra oraria opzionale.
+
+// Stato della serata calcolato dagli orari + override manuale.
+// Stessa logica di night_is_active() lato DB, qui serve solo per la UI:
+// a decidere chi entra è comunque il server.
+export function nightState(night) {
+  const now = Date.now();
+  const ts = (v) => (v ? new Date(v).getTime() : null);
+  if (night.closedAt) return 'closed';
+  const closes = ts(night.closesAt);
+  if (closes && now >= closes) return 'closed';
+  const opens = ts(night.opensAt);
+  if (night.openedAt || (opens && now >= opens)) return 'open';
+  if (opens && now < opens) return 'scheduled';
+  return 'draft';
+}
+
+// Un QR è utilizzabile solo se la serata è attiva E siamo nella sua finestra
+export function qrState(qr, night) {
+  const nState = nightState(night);
+  if (nState !== 'open') return nState === 'closed' ? 'closed' : 'waiting_night';
+  const now = Date.now();
+  if (qr.startsAt && now < new Date(qr.startsAt).getTime()) return 'scheduled';
+  if (qr.endsAt && now >= new Date(qr.endsAt).getTime()) return 'expired';
+  return 'active';
+}
+
+function rowToQr(row) {
+  return {
+    id: row.id,
+    label: row.label,
+    token: row.token,
+    startsAt: row.starts_at,
+    endsAt: row.ends_at,
+    createdAt: row.created_at,
+  };
+}
 
 function rowToNight(row) {
   return {
     id: row.id,
     title: row.title,
-    status: row.status,               // draft | open | closed
-    paymentStatus: row.payment_status, // pending | paid | waived
-    openedAt: row.opened_at,
-    closedAt: row.closed_at,
+    paymentStatus: row.payment_status,
+    opensAt: row.opens_at,     // apertura programmata
+    closesAt: row.closes_at,   // chiusura programmata
+    openedAt: row.opened_at,   // apertura manuale
+    closedAt: row.closed_at,   // chiusura manuale
     createdAt: row.created_at,
-    qrToken: row.night_qr_tokens?.[0]?.token ?? null,
+    qrCodes: (row.night_qr_codes ?? []).map(rowToQr),
   };
 }
 
@@ -136,7 +179,7 @@ export async function fetchNights(venueId) {
   if (!venueId) return [];
   const { data, error } = await supabase
     .from('nights')
-    .select('*, night_qr_tokens(token)')
+    .select('*, night_qr_codes(*)')
     .eq('venue_id', venueId)
     .order('created_at', { ascending: false });
   if (error) {
@@ -146,16 +189,30 @@ export async function fetchNights(venueId) {
   return (data ?? []).map(rowToNight);
 }
 
-export async function createNight(venueId, title) {
+export async function createNight(venueId, { title, opensAt, closesAt } = {}) {
   const { data, error } = await supabase.rpc('create_night', {
     p_venue: venueId,
     p_title: title ?? null,
+    p_opens_at: opensAt ?? null,
+    p_closes_at: closesAt ?? null,
   });
   if (error) {
     console.error('create_night fallita:', error);
     throw toVenueError(error, 'Creazione della serata non riuscita. Riprova.');
   }
-  return data; // { night_id, title, status, payment_status, qr_token }
+  return data;
+}
+
+export async function updateNightSchedule(nightId, { opensAt, closesAt } = {}) {
+  const { error } = await supabase.rpc('update_night_schedule', {
+    p_night: nightId,
+    p_opens_at: opensAt ?? null,
+    p_closes_at: closesAt ?? null,
+  });
+  if (error) {
+    console.error('update_night_schedule fallita:', error);
+    throw toVenueError(error, 'Aggiornamento degli orari non riuscito.');
+  }
 }
 
 export async function openNight(nightId) {
@@ -167,19 +224,46 @@ export async function openNight(nightId) {
   return data;
 }
 
-// Chiude la serata e termina le sessioni di chi è dentro.
+// Chiude la serata: termina le sessioni e spegne in blocco tutti i suoi QR
 export async function closeNight(nightId) {
   const { data, error } = await supabase.rpc('close_night', { p_night: nightId });
   if (error) {
     console.error('close_night fallita:', error);
     throw toVenueError(error, 'Chiusura della serata non riuscita. Riprova.');
   }
-  return data; // { sessions_closed, ... }
+  return data;
 }
 
-// Nuovo token per la serata: invalida i QR già stampati.
-export async function rotateNightQr(nightId) {
-  const { data, error } = await supabase.rpc('rotate_night_qr', { p_night: nightId });
+export async function createNightQr(nightId, { label, startsAt, endsAt } = {}) {
+  const { data, error } = await supabase.rpc('create_night_qr', {
+    p_night: nightId,
+    p_label: label,
+    p_starts_at: startsAt ?? null,
+    p_ends_at: endsAt ?? null,
+  });
+  if (error) {
+    console.error('create_night_qr fallita:', error);
+    throw toVenueError(error, 'Creazione del QR non riuscita. Riprova.');
+  }
+  return data;
+}
+
+export async function updateNightQr(qrId, { label, startsAt, endsAt } = {}) {
+  const { error } = await supabase.rpc('update_night_qr', {
+    p_qr: qrId,
+    p_label: label ?? null,
+    p_starts_at: startsAt ?? null,
+    p_ends_at: endsAt ?? null,
+  });
+  if (error) {
+    console.error('update_night_qr fallita:', error);
+    throw toVenueError(error, 'Aggiornamento del QR non riuscito. Riprova.');
+  }
+}
+
+// Nuovo token: invalida le copie già stampate di QUESTO QR
+export async function rotateNightQr(qrId) {
+  const { data, error } = await supabase.rpc('rotate_night_qr', { p_qr: qrId });
   if (error) {
     console.error('rotate_night_qr fallita:', error);
     throw toVenueError(error, 'Rigenerazione del QR non riuscita. Riprova.');
@@ -187,21 +271,38 @@ export async function rotateNightQr(nightId) {
   return data;
 }
 
-// Presenze di una singola serata (l'owner legge le sessioni del suo locale).
+export async function deleteNightQr(qrId) {
+  const { error } = await supabase.rpc('delete_night_qr', { p_qr: qrId });
+  if (error) {
+    console.error('delete_night_qr fallita:', error);
+    throw toVenueError(error, 'Eliminazione del QR non riuscita. Riprova.');
+  }
+}
+
+// Presenze di una serata; se passi anche il QR, quante persone in quella sala
 export async function fetchNightStats(nightId) {
-  if (!nightId) return { activeNow: 0, totalCheckIns: 0, failed: false };
+  if (!nightId) return { activeNow: 0, totalCheckIns: 0, byQr: {}, failed: false };
   const nowIso = new Date().toISOString();
   const [active, total] = await Promise.all([
-    supabase.from('sessions').select('id', { count: 'exact', head: true })
+    supabase.from('sessions').select('qr_code_id')
       .eq('night_id', nightId).is('ended_at', null).gt('expires_at', nowIso),
     supabase.from('sessions').select('id', { count: 'exact', head: true })
       .eq('night_id', nightId),
   ]);
   if (active.error || total.error) {
     console.error('fetchNightStats fallita:', active.error || total.error);
-    return { activeNow: 0, totalCheckIns: 0, failed: true };
+    return { activeNow: 0, totalCheckIns: 0, byQr: {}, failed: true };
   }
-  return { activeNow: active.count ?? 0, totalCheckIns: total.count ?? 0, failed: false };
+  const byQr = {};
+  for (const row of active.data ?? []) {
+    if (row.qr_code_id) byQr[row.qr_code_id] = (byQr[row.qr_code_id] ?? 0) + 1;
+  }
+  return {
+    activeNow: (active.data ?? []).length,
+    totalCheckIns: total.count ?? 0,
+    byQr,
+    failed: false,
+  };
 }
 
 // URL che il QR codificherà: funziona anche inquadrato dalla fotocamera

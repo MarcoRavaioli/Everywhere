@@ -8,8 +8,9 @@ import EvLogo from '@/components/everywhere/EvLogo';
 import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/lib/AuthContext';
 import {
-  fetchMyVenue, fetchVenueStats, fetchNights, createNight, openNight, closeNight,
-  rotateNightQr, checkInUrl, VenueError,
+  fetchMyVenue, fetchVenueStats, fetchNights, fetchNightStats, createNight,
+  openNight, closeNight, createNightQr, deleteNightQr, rotateNightQr,
+  nightState, qrState, checkInUrl, VenueError,
 } from '@/api/venues';
 import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
@@ -203,32 +204,79 @@ function CommunicationsScreen() {
   );
 }
 
-function NightStatusBadge({ status }) {
-  const map = {
-    draft: { label: 'Bozza', cls: 'bg-secondary text-muted-foreground' },
-    open: { label: '● In corso', cls: 'bg-primary/15 text-primary' },
-    closed: { label: 'Conclusa', cls: 'bg-secondary/60 text-muted-foreground/70' },
-  };
-  const s = map[status] ?? map.draft;
-  return <span className={`text-[10px] font-semibold px-2.5 py-0.5 rounded-full ${s.cls}`}>{s.label}</span>;
+// datetime-local <-> ISO (l'input lavora in ora locale, il DB in UTC)
+const toLocalInput = (iso) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+const fromLocalInput = (v) => (v ? new Date(v).toISOString() : null);
+const fmt = (iso) =>
+  iso ? new Date(iso).toLocaleString('it-IT', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : null;
+
+const NIGHT_BADGES = {
+  draft: { label: 'Bozza', cls: 'bg-secondary text-muted-foreground' },
+  scheduled: { label: 'Programmata', cls: 'bg-accent/15 text-accent' },
+  open: { label: '● In corso', cls: 'bg-primary/15 text-primary' },
+  closed: { label: 'Conclusa', cls: 'bg-secondary/60 text-muted-foreground/70' },
+};
+
+const QR_BADGES = {
+  active: { label: '● Attivo', cls: 'bg-primary/15 text-primary' },
+  scheduled: { label: 'Programmato', cls: 'bg-accent/15 text-accent' },
+  expired: { label: 'Scaduto', cls: 'bg-secondary/60 text-muted-foreground/70' },
+  waiting_night: { label: 'Attende la serata', cls: 'bg-secondary text-muted-foreground' },
+  closed: { label: 'Serata conclusa', cls: 'bg-secondary/60 text-muted-foreground/70' },
+};
+
+function StateBadge({ map, state }) {
+  const s = map[state] ?? Object.values(map)[0];
+  return <span className={`text-[10px] font-semibold px-2.5 py-0.5 rounded-full whitespace-nowrap ${s.cls}`}>{s.label}</span>;
 }
 
-function NightQrView({ night, venue, onBack, onNightChange }) {
+function TimeWindowFields({ startsAt, endsAt, onChange, startLabel = 'Attivo da', endLabel = 'Attivo fino a' }) {
+  return (
+    <div className="flex gap-2">
+      <div className="flex-1">
+        <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1 block">{startLabel}</label>
+        <input
+          type="datetime-local"
+          value={startsAt}
+          onChange={e => onChange({ startsAt: e.target.value, endsAt })}
+          className="w-full h-11 px-3 bg-secondary border border-border/50 rounded-xl text-xs text-foreground outline-none focus:border-primary/50"
+        />
+      </div>
+      <div className="flex-1">
+        <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1 block">{endLabel}</label>
+        <input
+          type="datetime-local"
+          value={endsAt}
+          onChange={e => onChange({ startsAt, endsAt: e.target.value })}
+          className="w-full h-11 px-3 bg-secondary border border-border/50 rounded-xl text-xs text-foreground outline-none focus:border-primary/50"
+        />
+      </div>
+    </div>
+  );
+}
+
+// Un singolo QR ingrandito: stampa, condivisione, rotazione
+function QrDetailView({ qr, night, venue, onBack, onChanged }) {
   const [rotating, setRotating] = useState(false);
   const [confirmRotate, setConfirmRotate] = useState(false);
   const [note, setNote] = useState(null);
 
-  const url = night.qrToken ? checkInUrl(night.qrToken) : null;
-  const isOpen = night.status === 'open';
+  const url = checkInUrl(qr.token);
+  const state = qrState(qr, night);
 
   const handleRotate = async () => {
     if (rotating) return;
     setNote(null);
     setRotating(true);
     try {
-      const token = await rotateNightQr(night.id);
-      onNightChange({ ...night, qrToken: token });
+      await rotateNightQr(qr.id);
       setConfirmRotate(false);
+      await onChanged();
     } catch (err) {
       setNote(err instanceof VenueError ? err.message : 'Rigenerazione non riuscita.');
     } finally {
@@ -237,100 +285,253 @@ function NightQrView({ night, venue, onBack, onNightChange }) {
   };
 
   const handleShare = async () => {
-    if (!url) return;
     try {
       if (navigator.share) {
-        await navigator.share({ title: `Everywhere · ${venue.name}`, text: 'Entra nella serata su Everywhere', url });
+        await navigator.share({ title: `${venue.name} · ${qr.label}`, text: 'Entra nella serata su Everywhere', url });
       } else {
         await navigator.clipboard.writeText(url);
         setNote('Link copiato negli appunti.');
       }
     } catch {
-      /* condivisione annullata: nessun errore da mostrare */
+      /* condivisione annullata */
     }
   };
 
   return (
     <div className="flex flex-col items-center text-center space-y-5">
       <button onClick={onBack} className="self-start text-xs text-muted-foreground underline underline-offset-2">
+        ← QR della serata
+      </button>
+
+      <div>
+        <h2 className="text-xl font-bold text-foreground">{qr.label}</h2>
+        <p className="text-[11px] text-muted-foreground mt-0.5">{night.title || 'Serata'}</p>
+        <div className="mt-2"><StateBadge map={QR_BADGES} state={state} /></div>
+      </div>
+
+      {state !== 'active' && (
+        <div className="flex items-start gap-2 px-4 py-3 rounded-xl bg-secondary/60 border border-border/50 text-left">
+          <AlertTriangle className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-0.5" />
+          <p className="text-[11px] text-muted-foreground leading-relaxed">
+            {state === 'waiting_night' && 'Stampalo pure: entrerà in funzione quando la serata sarà aperta.'}
+            {state === 'scheduled' && `Si attiva il ${fmt(qr.startsAt)}.`}
+            {state === 'expired' && 'Questo QR ha superato il suo orario di fine.'}
+            {state === 'closed' && 'Serata conclusa: questo QR non fa più entrare nessuno.'}
+          </p>
+        </div>
+      )}
+
+      <div className="qr-print-area glass rounded-2xl p-6 border border-primary/30">
+        <div className={`bg-white p-4 rounded-xl inline-block ${state === 'active' ? '' : 'opacity-60'}`}>
+          <QRCodeSVG value={url} size={192} level="M" />
+        </div>
+        <p className="text-sm font-semibold text-foreground mt-4">{venue.name}</p>
+        <p className="text-[11px] text-muted-foreground mt-0.5">{qr.label}</p>
+      </div>
+
+      <p className="text-[10px] text-muted-foreground/60 break-all max-w-[280px]">{url}</p>
+
+      <div className="flex gap-3 w-full">
+        <Button onClick={() => window.print()} variant="outline" className="flex-1 h-12 rounded-xl border-border/50 text-foreground">
+          <Printer className="w-4 h-4 mr-2" />
+          Stampa
+        </Button>
+        <Button onClick={handleShare} className="flex-1 h-12 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground glow-pink">
+          <Share2 className="w-4 h-4 mr-2" />
+          Condividi
+        </Button>
+      </div>
+
+      {note && <p className="text-xs text-muted-foreground">{note}</p>}
+
+      <div className="w-full border-t border-border/40 pt-5">
+        {!confirmRotate ? (
+          <button
+            onClick={() => { setNote(null); setConfirmRotate(true); }}
+            className="text-xs text-muted-foreground underline underline-offset-2 flex items-center gap-1.5 mx-auto"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            Rigenera questo QR
+          </button>
+        ) : (
+          <div className="glass rounded-2xl p-4 space-y-3 border border-destructive/30">
+            <div className="flex items-start gap-2 text-left">
+              <AlertTriangle className="w-4 h-4 text-destructive flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-muted-foreground">
+                Le copie già stampate di <strong>{qr.label}</strong> smetteranno di
+                funzionare. Gli altri QR della serata non sono toccati.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={() => setConfirmRotate(false)} variant="outline" className="flex-1 h-10 rounded-xl border-border/50 text-foreground text-xs">
+                Annulla
+              </Button>
+              <Button onClick={handleRotate} disabled={rotating} className="flex-1 h-10 rounded-xl bg-destructive hover:bg-destructive/90 text-destructive-foreground text-xs">
+                {rotating ? 'Rigenerazione…' : 'Conferma'}
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Elenco dei QR di una serata: uno generale + quelli per sala/zona
+function NightQrListScreen({ night, venue, stats, onBack, onChanged }) {
+  const [selectedId, setSelectedId] = useState(null);
+  const [adding, setAdding] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [form, setForm] = useState({ label: '', startsAt: '', endsAt: '' });
+
+  const selected = night.qrCodes.find(q => q.id === selectedId);
+  if (selected) {
+    return (
+      <QrDetailView
+        qr={selected}
+        night={night}
+        venue={venue}
+        onBack={() => setSelectedId(null)}
+        onChanged={onChanged}
+      />
+    );
+  }
+
+  const handleAdd = async () => {
+    if (busy) return;
+    setError(null);
+    setBusy(true);
+    try {
+      await createNightQr(night.id, {
+        label: form.label.trim(),
+        startsAt: fromLocalInput(form.startsAt),
+        endsAt: fromLocalInput(form.endsAt),
+      });
+      setForm({ label: '', startsAt: '', endsAt: '' });
+      setAdding(false);
+      await onChanged();
+    } catch (err) {
+      setError(err instanceof VenueError ? err.message : 'Creazione non riuscita.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDelete = async (qrId) => {
+    if (busy) return;
+    setError(null);
+    setBusy(true);
+    try {
+      await deleteNightQr(qrId);
+      await onChanged();
+    } catch (err) {
+      setError(err instanceof VenueError ? err.message : 'Eliminazione non riuscita.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      <button onClick={onBack} className="text-xs text-muted-foreground underline underline-offset-2">
         ← Tutte le serate
       </button>
 
       <div>
         <h2 className="text-xl font-bold text-foreground">{night.title || 'Serata'}</h2>
-        <div className="mt-2"><NightStatusBadge status={night.status} /></div>
+        <p className="text-xs text-muted-foreground mt-1">
+          Più QR per la stessa serata: ingresso, sale, zone. Chi entra da QR
+          diversi si vede comunque, è la stessa festa.
+        </p>
       </div>
 
-      {!isOpen && (
-        <div className="flex items-start gap-2 px-4 py-3 rounded-xl bg-secondary/60 border border-border/50 text-left">
-          <AlertTriangle className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-0.5" />
-          <p className="text-[11px] text-muted-foreground leading-relaxed">
-            {night.status === 'closed'
-              ? 'Serata conclusa: questo QR non fa più entrare nessuno.'
-              : 'Puoi già stamparlo, ma il QR farà entrare le persone solo dopo che avrai aperto la serata.'}
-          </p>
-        </div>
-      )}
+      {error && <p className="text-destructive text-sm text-center">{error}</p>}
 
-      {url ? (
-        <>
-          <div className="qr-print-area glass rounded-2xl p-6 border border-primary/30">
-            <div className={`bg-white p-4 rounded-xl inline-block ${isOpen ? '' : 'opacity-60'}`}>
-              <QRCodeSVG value={url} size={192} level="M" />
-            </div>
-            <p className="text-sm font-semibold text-foreground mt-4">{venue.name}</p>
-            {night.title && <p className="text-[11px] text-muted-foreground mt-0.5">{night.title}</p>}
-          </div>
-
-          <p className="text-[10px] text-muted-foreground/60 break-all max-w-[280px]">{url}</p>
-
-          <div className="flex gap-3 w-full">
-            <Button onClick={() => window.print()} variant="outline" className="flex-1 h-12 rounded-xl border-border/50 text-foreground">
-              <Printer className="w-4 h-4 mr-2" />
-              Stampa
-            </Button>
-            <Button onClick={handleShare} className="flex-1 h-12 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground glow-pink">
-              <Share2 className="w-4 h-4 mr-2" />
-              Condividi
-            </Button>
-          </div>
-        </>
-      ) : (
-        <p className="text-sm text-muted-foreground">QR non disponibile per questa serata.</p>
-      )}
-
-      {note && <p className="text-xs text-muted-foreground">{note}</p>}
-
-      {night.status !== 'closed' && url && (
-        <div className="w-full border-t border-border/40 pt-5">
-          {!confirmRotate ? (
-            <button
-              onClick={() => { setNote(null); setConfirmRotate(true); }}
-              className="text-xs text-muted-foreground underline underline-offset-2 flex items-center gap-1.5 mx-auto"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              Rigenera il QR
-            </button>
-          ) : (
-            <div className="glass rounded-2xl p-4 space-y-3 border border-destructive/30">
-              <div className="flex items-start gap-2 text-left">
-                <AlertTriangle className="w-4 h-4 text-destructive flex-shrink-0 mt-0.5" />
-                <p className="text-xs text-muted-foreground">
-                  I QR di questa serata già stampati o condivisi smetteranno di
-                  funzionare. Chi è già dentro resta in sessione.
-                </p>
+      <div className="space-y-2">
+        {night.qrCodes.map(qr => {
+          const state = qrState(qr, night);
+          const here = stats.byQr?.[qr.id] ?? 0;
+          return (
+            <div key={qr.id} className="glass rounded-2xl p-4 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-foreground truncate">{qr.label}</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    {qr.startsAt || qr.endsAt
+                      ? `${fmt(qr.startsAt) ?? 'da subito'} → ${fmt(qr.endsAt) ?? 'fine serata'}`
+                      : 'Attivo per tutta la serata'}
+                  </p>
+                  {here > 0 && (
+                    <p className="text-[11px] text-primary mt-1">{here} {here === 1 ? 'persona' : 'persone'} da qui</p>
+                  )}
+                </div>
+                <StateBadge map={QR_BADGES} state={state} />
               </div>
               <div className="flex gap-2">
-                <Button onClick={() => setConfirmRotate(false)} variant="outline" className="flex-1 h-10 rounded-xl border-border/50 text-foreground text-xs">
-                  Annulla
+                <Button
+                  onClick={() => setSelectedId(qr.id)}
+                  variant="outline"
+                  className="flex-1 h-10 rounded-xl border-border/50 text-foreground text-xs"
+                >
+                  <QrCode className="w-3.5 h-3.5 mr-1.5" />
+                  Mostra
                 </Button>
-                <Button onClick={handleRotate} disabled={rotating} className="flex-1 h-10 rounded-xl bg-destructive hover:bg-destructive/90 text-destructive-foreground text-xs">
-                  {rotating ? 'Rigenerazione…' : 'Conferma'}
-                </Button>
+                {night.qrCodes.length > 1 && (
+                  <Button
+                    onClick={() => handleDelete(qr.id)}
+                    disabled={busy}
+                    variant="outline"
+                    className="h-10 px-3 rounded-xl border-destructive/40 text-destructive text-xs"
+                  >
+                    Elimina
+                  </Button>
+                )}
               </div>
             </div>
-          )}
+          );
+        })}
+      </div>
+
+      {adding ? (
+        <div className="glass rounded-2xl p-4 space-y-3">
+          <label className="text-xs text-muted-foreground uppercase tracking-wider block">Nuovo QR</label>
+          <Input
+            value={form.label}
+            onChange={e => setForm(f => ({ ...f, label: e.target.value }))}
+            maxLength={60}
+            placeholder="Es. Sala rossa, Terrazza, Privé"
+            className="h-12 bg-secondary border-border/50 rounded-xl text-foreground placeholder:text-muted-foreground/50"
+          />
+          <TimeWindowFields
+            startsAt={form.startsAt}
+            endsAt={form.endsAt}
+            onChange={({ startsAt, endsAt }) => setForm(f => ({ ...f, startsAt, endsAt }))}
+          />
+          <p className="text-[10px] text-muted-foreground/60">
+            Lascia vuoto per un QR attivo da subito e per tutta la serata.
+          </p>
+          <div className="flex gap-2">
+            <Button onClick={() => setAdding(false)} variant="outline" className="flex-1 h-11 rounded-xl border-border/50 text-foreground text-xs">
+              Annulla
+            </Button>
+            <Button
+              onClick={handleAdd}
+              disabled={busy || !form.label.trim()}
+              className="flex-1 h-11 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold"
+            >
+              {busy ? 'Creazione…' : 'Crea QR'}
+            </Button>
+          </div>
         </div>
+      ) : (
+        <Button
+          onClick={() => setAdding(true)}
+          variant="outline"
+          className="w-full h-12 rounded-xl border-border/50 text-foreground"
+        >
+          + Aggiungi un QR (sala, zona…)
+        </Button>
       )}
     </div>
   );
@@ -338,19 +539,24 @@ function NightQrView({ night, venue, onBack, onNightChange }) {
 
 function NightsScreen({ venue, onPresenceChange }) {
   const [nights, setNights] = useState([]);
+  const [statsByNight, setStatsByNight] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [title, setTitle] = useState('');
+  const [form, setForm] = useState({ title: '', opensAt: '', closesAt: '' });
   const [creating, setCreating] = useState(false);
   const [busyId, setBusyId] = useState(null);
-  const [selectedId, setSelectedId] = useState(null);
+  const [openedNightId, setOpenedNightId] = useState(null);
   const [confirmCloseId, setConfirmCloseId] = useState(null);
 
   const load = useCallback(async () => {
-    setLoading(true);
     setError(null);
     try {
-      setNights(await fetchNights(venue.id));
+      const list = await fetchNights(venue.id);
+      setNights(list);
+      const entries = await Promise.all(
+        list.map(async n => [n.id, await fetchNightStats(n.id)])
+      );
+      setStatsByNight(Object.fromEntries(entries));
     } catch (err) {
       setError(err instanceof VenueError ? err.message : 'Caricamento non riuscito.');
     } finally {
@@ -365,8 +571,12 @@ function NightsScreen({ venue, onPresenceChange }) {
     setError(null);
     setCreating(true);
     try {
-      await createNight(venue.id, title.trim() || null);
-      setTitle('');
+      await createNight(venue.id, {
+        title: form.title.trim() || null,
+        opensAt: fromLocalInput(form.opensAt),
+        closesAt: fromLocalInput(form.closesAt),
+      });
+      setForm({ title: '', opensAt: '', closesAt: '' });
       await load();
     } catch (err) {
       setError(err instanceof VenueError ? err.message : 'Creazione non riuscita.');
@@ -391,14 +601,15 @@ function NightsScreen({ venue, onPresenceChange }) {
     }
   };
 
-  const selected = nights.find(n => n.id === selectedId);
-  if (selected) {
+  const openedNight = nights.find(n => n.id === openedNightId);
+  if (openedNight) {
     return (
-      <NightQrView
-        night={selected}
+      <NightQrListScreen
+        night={openedNight}
         venue={venue}
-        onBack={() => setSelectedId(null)}
-        onNightChange={(updated) => setNights(prev => prev.map(n => (n.id === updated.id ? updated : n)))}
+        stats={statsByNight[openedNight.id] ?? { byQr: {} }}
+        onBack={() => setOpenedNightId(null)}
+        onChanged={load}
       />
     );
   }
@@ -408,20 +619,30 @@ function NightsScreen({ venue, onPresenceChange }) {
       <div>
         <h2 className="text-xl font-bold text-foreground">Serate</h2>
         <p className="text-xs text-muted-foreground mt-1">
-          Ogni serata ha il suo QR. Apri la serata per farlo funzionare.
+          Ogni serata ha i suoi QR. Imposta gli orari o aprila e chiudila a mano.
         </p>
       </div>
 
-      {/* Creazione */}
       <div className="glass rounded-2xl p-4 space-y-3">
         <label className="text-xs text-muted-foreground uppercase tracking-wider block">Nuova serata</label>
         <Input
-          value={title}
-          onChange={e => setTitle(e.target.value)}
+          value={form.title}
+          onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
           maxLength={120}
           placeholder="Es. Sabato Techno · DJ Carola"
           className="h-12 bg-secondary border-border/50 rounded-xl text-foreground placeholder:text-muted-foreground/50"
         />
+        <TimeWindowFields
+          startLabel="Apre alle"
+          endLabel="Chiude alle"
+          startsAt={form.opensAt}
+          endsAt={form.closesAt}
+          onChange={({ startsAt, endsAt }) => setForm(f => ({ ...f, opensAt: startsAt, closesAt: endsAt }))}
+        />
+        <p className="text-[10px] text-muted-foreground/60 leading-relaxed">
+          Senza orari la serata parte solo quando premi "Apri". Puoi comunque
+          aprire in anticipo o chiudere prima in qualsiasi momento.
+        </p>
         <Button
           onClick={handleCreate}
           disabled={creating}
@@ -448,72 +669,82 @@ function NightsScreen({ venue, onPresenceChange }) {
         </p>
       ) : (
         <div className="space-y-2">
-          {nights.map(night => (
-            <div key={night.id} className="glass rounded-2xl p-4 space-y-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-bold text-foreground truncate">{night.title || 'Serata'}</p>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">
-                    {new Date(night.createdAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'long' })}
-                  </p>
-                </div>
-                <NightStatusBadge status={night.status} />
-              </div>
-
-              <div className="flex gap-2">
-                <Button
-                  onClick={() => setSelectedId(night.id)}
-                  variant="outline"
-                  className="flex-1 h-10 rounded-xl border-border/50 text-foreground text-xs"
-                >
-                  <QrCode className="w-3.5 h-3.5 mr-1.5" />
-                  QR
-                </Button>
-
-                {night.status === 'draft' && (
-                  <Button
-                    onClick={() => runOn(night.id, openNight, 'Apertura non riuscita.')}
-                    disabled={busyId === night.id}
-                    className="flex-1 h-10 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs"
-                  >
-                    <Play className="w-3.5 h-3.5 mr-1.5 fill-current" />
-                    {busyId === night.id ? '…' : 'Apri'}
-                  </Button>
-                )}
-
-                {night.status === 'open' && confirmCloseId !== night.id && (
-                  <Button
-                    onClick={() => setConfirmCloseId(night.id)}
-                    variant="outline"
-                    className="flex-1 h-10 rounded-xl border-destructive/40 text-destructive text-xs"
-                  >
-                    Chiudi
-                  </Button>
-                )}
-              </div>
-
-              {confirmCloseId === night.id && (
-                <div className="rounded-xl p-3 space-y-3 border border-destructive/30 bg-destructive/5">
-                  <p className="text-[11px] text-muted-foreground leading-relaxed text-left">
-                    Chiudendo la serata tutte le persone dentro escono dalla sessione
-                    e smettono di vedersi tra loro. Non si può riaprire.
-                  </p>
-                  <div className="flex gap-2">
-                    <Button onClick={() => setConfirmCloseId(null)} variant="outline" className="flex-1 h-9 rounded-xl border-border/50 text-foreground text-xs">
-                      Annulla
-                    </Button>
-                    <Button
-                      onClick={() => runOn(night.id, closeNight, 'Chiusura non riuscita.')}
-                      disabled={busyId === night.id}
-                      className="flex-1 h-9 rounded-xl bg-destructive hover:bg-destructive/90 text-destructive-foreground text-xs"
-                    >
-                      {busyId === night.id ? 'Chiusura…' : 'Chiudi serata'}
-                    </Button>
+          {nights.map(night => {
+            const state = nightState(night);
+            const st = statsByNight[night.id] ?? { activeNow: 0 };
+            return (
+              <div key={night.id} className="glass rounded-2xl p-4 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-foreground truncate">{night.title || 'Serata'}</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      {night.opensAt || night.closesAt
+                        ? `${fmt(night.opensAt) ?? 'apertura manuale'} → ${fmt(night.closesAt) ?? 'chiusura manuale'}`
+                        : new Date(night.createdAt).toLocaleDateString('it-IT', { day: 'numeric', month: 'long' })}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground/70 mt-0.5">
+                      {night.qrCodes.length} QR
+                      {state === 'open' && ` · ${st.activeNow} ${st.activeNow === 1 ? 'persona' : 'persone'}`}
+                    </p>
                   </div>
+                  <StateBadge map={NIGHT_BADGES} state={state} />
                 </div>
-              )}
-            </div>
-          ))}
+
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => setOpenedNightId(night.id)}
+                    variant="outline"
+                    className="flex-1 h-10 rounded-xl border-border/50 text-foreground text-xs"
+                  >
+                    <QrCode className="w-3.5 h-3.5 mr-1.5" />
+                    QR ({night.qrCodes.length})
+                  </Button>
+
+                  {(state === 'draft' || state === 'scheduled') && (
+                    <Button
+                      onClick={() => runOn(night.id, openNight, 'Apertura non riuscita.')}
+                      disabled={busyId === night.id}
+                      className="flex-1 h-10 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs"
+                    >
+                      <Play className="w-3.5 h-3.5 mr-1.5 fill-current" />
+                      {busyId === night.id ? '…' : 'Apri ora'}
+                    </Button>
+                  )}
+
+                  {state === 'open' && confirmCloseId !== night.id && (
+                    <Button
+                      onClick={() => setConfirmCloseId(night.id)}
+                      variant="outline"
+                      className="flex-1 h-10 rounded-xl border-destructive/40 text-destructive text-xs"
+                    >
+                      Chiudi
+                    </Button>
+                  )}
+                </div>
+
+                {confirmCloseId === night.id && (
+                  <div className="rounded-xl p-3 space-y-3 border border-destructive/30 bg-destructive/5">
+                    <p className="text-[11px] text-muted-foreground leading-relaxed text-left">
+                      Chiude la serata e <strong>tutti</strong> i suoi QR insieme. Le persone
+                      dentro escono dalla sessione e smettono di vedersi. Non si può riaprire.
+                    </p>
+                    <div className="flex gap-2">
+                      <Button onClick={() => setConfirmCloseId(null)} variant="outline" className="flex-1 h-9 rounded-xl border-border/50 text-foreground text-xs">
+                        Annulla
+                      </Button>
+                      <Button
+                        onClick={() => runOn(night.id, closeNight, 'Chiusura non riuscita.')}
+                        disabled={busyId === night.id}
+                        className="flex-1 h-9 rounded-xl bg-destructive hover:bg-destructive/90 text-destructive-foreground text-xs"
+                      >
+                        {busyId === night.id ? 'Chiusura…' : 'Chiudi serata'}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -543,7 +774,7 @@ export default function BusinessDashboard() {
       if (v) {
         const [s, nights] = await Promise.all([fetchVenueStats(v.id), fetchNights(v.id)]);
         setStats(s);
-        const open = nights.find(n => n.status === 'open');
+        const open = nights.find(n => nightState(n) === 'open');
         setOpenNightTitle(open ? (open.title || 'Serata senza nome') : null);
       }
     } catch (err) {
