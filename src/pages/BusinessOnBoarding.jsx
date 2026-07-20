@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import EvLogo from '@/components/everywhere/EvLogo';
 import { useApp } from '@/context/AppContext';
+import { useAuth } from '@/lib/AuthContext';
+import { createMyVenue, VenueError } from '@/api/venues';
 
 const VENUE_TYPES = ['Club / Discoteca', 'Bar / Cocktail Bar', 'Lounge', 'Festival', 'Evento privato', 'Ristorante', 'Beach club', 'Altro'];
 
@@ -13,8 +15,11 @@ const STEPS = ['Attività', 'Contatti & Orari', 'Documenti', 'Piano'];
 
 export default function BusinessOnboarding() {
   const navigate = useNavigate();
-  const { setBusiness } = useApp();
+  const { setBusiness, refreshProfile } = useApp();
+  const { isAuthenticated, authChecked, signInWithGoogle, authError } = useAuth();
   const [step, setStep] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
   const [form, setForm] = useState({
     name: '', type: '', address: '', city: '',
     phone: '', email: '', website: '',
@@ -26,10 +31,28 @@ export default function BusinessOnboarding() {
 
   const update = (key, val) => setForm(prev => ({ ...prev, [key]: val }));
 
-  const handleFinish = (plan) => {
-    const business = { ...form, plan };
-    if (setBusiness) setBusiness(business);
-    navigate('/business');
+  // Crea profilo business + venue + token QR (RPC atomica lato server).
+  // Il piano scelto resta per ora un dato locale: la fatturazione arriva
+  // con Stripe (Step 6), qui non si incassa nulla.
+  const handleFinish = async (plan) => {
+    if (saving) return;
+    setError(null);
+    setSaving(true);
+    try {
+      const venue = await createMyVenue({
+        name: form.name,
+        city: form.city,
+        address: form.address,
+      });
+      if (setBusiness) setBusiness({ ...form, plan, venueId: venue.venue_id });
+      localStorage.removeItem('ew_signup_intent');
+      await refreshProfile();
+      navigate('/business', { replace: true });
+    } catch (err) {
+      setError(err instanceof VenueError ? err.message : 'Registrazione non riuscita. Riprova.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const canNext = () => {
@@ -37,6 +60,45 @@ export default function BusinessOnboarding() {
     if (step === 1) return form.phone.trim() || form.email.trim();
     return true;
   };
+
+  // Il locale deve avere un account PRIMA di compilare: il login
+  // rimanda alla home e i dati del form andrebbero persi.
+  if (authChecked && !isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center px-6 text-center">
+        <EvLogo size="md" />
+        <h2 className="text-xl font-bold text-foreground mt-6">Registra il tuo locale</h2>
+        <p className="text-xs text-muted-foreground mt-2 max-w-[280px] leading-relaxed">
+          Serve un account per gestire la tua venue, il QR e le comunicazioni.
+          Accedi prima di inserire i dati.
+        </p>
+        <Button
+          onClick={signInWithGoogle}
+          className="w-full max-w-sm h-13 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold mt-8 glow-pink"
+        >
+          <img src="https://www.google.com/favicon.ico" alt="G" className="w-4 h-4 mr-2" />
+          Continua con Google
+        </Button>
+        {authError && (
+          <p className="text-destructive text-xs mt-3">Accesso non riuscito: {authError.message}</p>
+        )}
+        <button
+          onClick={() => navigate('/')}
+          className="text-muted-foreground text-xs underline underline-offset-2 mt-6"
+        >
+          Torna indietro
+        </button>
+      </div>
+    );
+  }
+
+  if (!authChecked) {
+    return (
+      <div className="fixed inset-0 flex items-center justify-center bg-background">
+        <div className="w-8 h-8 border-4 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -149,12 +211,26 @@ export default function BusinessOnboarding() {
               <div>
                 <h2 className="text-xl font-bold text-foreground mb-1">Scegli il tuo piano</h2>
                 <p className="text-xs text-muted-foreground">Puoi cambiare in qualsiasi momento.</p>
+                <p className="text-[11px] text-muted-foreground/60 mt-2">
+                  Nessun addebito ora: la fatturazione non è ancora attiva.
+                </p>
               </div>
+
+              {error && (
+                <p className="text-destructive text-sm text-center">{error}</p>
+              )}
+              {saving && (
+                <div className="flex items-center justify-center gap-2 text-muted-foreground text-xs">
+                  <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                  Registrazione del locale in corso…
+                </div>
+              )}
 
               {/* Subscription */}
               <button
                 onClick={() => handleFinish('subscription')}
-                className="w-full glass rounded-2xl p-5 text-left border border-accent/40 hover:border-accent/70 transition-all group"
+                disabled={saving}
+                className="w-full glass rounded-2xl p-5 text-left border border-accent/40 hover:border-accent/70 transition-all group disabled:opacity-50"
               >
                 <div className="flex items-start gap-4">
                   <div className="w-11 h-11 rounded-full bg-accent/15 flex items-center justify-center flex-shrink-0">
@@ -180,7 +256,8 @@ export default function BusinessOnboarding() {
               {/* Single session */}
               <button
                 onClick={() => handleFinish('pay-per-session')}
-                className="w-full glass rounded-2xl p-5 text-left border border-border/50 hover:border-primary/40 transition-all group"
+                disabled={saving}
+                className="w-full glass rounded-2xl p-5 text-left border border-border/50 hover:border-primary/40 transition-all group disabled:opacity-50"
               >
                 <div className="flex items-start gap-4">
                   <div className="w-11 h-11 rounded-full bg-primary/15 flex items-center justify-center flex-shrink-0">

@@ -123,6 +123,16 @@ export function AppProvider({ children }) {
     return () => { cancelled = true; };
   }, [authChecked, authUser?.id]);
 
+  // Ricarica il profilo dal DB quando cambia senza che cambi l'utente
+  // autenticato (es. l'onboarding business che imposta account_type).
+  const refreshProfile = useCallback(async () => {
+    const row = await fetchMyProfile();
+    const user = rowToUser(row);
+    if (row?.photo_path) user.photo = await getAvatarUrl(row.photo_path);
+    setCurrentUser(user);
+    return user;
+  }, []);
+
   const loginAsGuest = useCallback(() => {
     setCurrentUser({
       id: 'guest',
@@ -279,7 +289,7 @@ export function AppProvider({ children }) {
 
   return (
     <AppContext.Provider value={{
-      currentUser, setCurrentUser, profileChecked, loginAsGuest, createProfile, updateProfile, uploadAvatar,
+      currentUser, setCurrentUser, profileChecked, loginAsGuest, createProfile, updateProfile, uploadAvatar, refreshProfile,
       business, setBusiness,
       isInSession, currentVenue, sessionTimeLeft, formatTime,
       startSession, endSession,

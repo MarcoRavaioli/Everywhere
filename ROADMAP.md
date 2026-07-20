@@ -30,12 +30,30 @@ attiva nello stesso locale o a un match. Nessun browsing esterno degli utenti.
 - [x] Login → `/create-profile` → riga in `profiles` → smistamento automatico da `/`
 - [x] Fix race su reload + precompilazione form
 
-### 3b — Foto profilo (Storage)
-- [ ] Upload dal form profilo (bucket `avatars`, path `<uid>/…`, resize client-side)
-- [ ] Signed URL con cache in memoria; fallback avatar se assente
-- [ ] **Test:** carico una foto → la vedo su Profile e dopo un reload; il file
-      compare in Storage sotto il mio uid; un altro utente non in sessione
-      con me NON può ottenerne la signed URL
+### ✅ 3b — Foto profilo (Storage)
+- [x] Upload dal form profilo (bucket `avatars`, path `<uid>/…`, resize client-side)
+- [x] Signed URL con cache in memoria (scadenza verificata: link valido subito,
+      `InvalidJWT` dopo la scadenza); fallback avatar se assente
+- [x] **Test:** carico una foto → la vedo su Profile e dopo un reload; il file
+      compare in Storage sotto il mio uid; upload nella cartella di un altro
+      utente bloccato da RLS; file malformati (PDF-come-jpg, vuoto, 40MB, gif)
+      rifiutati lato client e lato server; rete lenta (Slow 3G) → loading/errore
+      visibili, mai schermata muta; due upload di fila → resta l'ultimo dopo reload
+- [ ] **Test rimandato a 3e:** un utente NON in sessione/match con me non può
+      ottenere la signed URL della mia foto (serve un secondo account reale,
+      naturale quando in 3e si testano persone/EV/match con 2 utenti)
+- [ ] **Fix trovato dal test:** `/profile` è raggiungibile solo dentro
+      `SessionLayout` (serve una sessione attiva in un locale) — eredità della
+      struttura demo, non scelta di prodotto. Per un'app social l'utente deve
+      poter curare foto/bio/interessi anche da casa, fuori sessione. Aggiungere
+      `/profile` (e l'accesso a esso, es. icona su Home) anche fuori da
+      `SessionLayout`, prima del 3g/3h.
+
+> **Nota login test:** per creare account di test si usa la Dashboard Supabase
+> (Authentication → Add user, email+password, Auto Confirm) e si fa login da
+> console con `__supabase.auth.signInWithPassword(...)` — solo per test interni.
+> L'email+password NON diventa un metodo di login reale nell'app: in produzione
+> resta solo Google/Apple, come deciso.
 
 ### 3c — Lato business: locale reale + QR
 - [ ] BusinessOnBoarding: crea `profiles(account_type=business)` + `venues` + riga `venue_qr_tokens`

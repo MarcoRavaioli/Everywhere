@@ -16,10 +16,15 @@ export default function AccountTypeSelect() {
   useEffect(() => {
     if (!isAuthenticated || !profileChecked) return;
     if (!currentUser) {
-      navigate('/create-profile', { replace: true });
+      // Chi ha scelto "Sono un locale" prima di accedere torna
+      // nell'onboarding business, non in quello personale.
+      const intent = localStorage.getItem('ew_signup_intent');
+      navigate(intent === 'business' ? '/business-onboarding' : '/create-profile', { replace: true });
     } else if (currentUser.accountType === 'business') {
+      localStorage.removeItem('ew_signup_intent');
       navigate('/business', { replace: true });
     } else {
+      localStorage.removeItem('ew_signup_intent');
       navigate('/home', { replace: true });
     }
   }, [isAuthenticated, profileChecked, currentUser, navigate]);
@@ -68,7 +73,7 @@ export default function AccountTypeSelect() {
         >
           {/* Utente */}
           <button
-            onClick={() => navigate('/welcome')}
+            onClick={() => { localStorage.removeItem('ew_signup_intent'); navigate('/welcome'); }}
             className="w-full glass rounded-2xl p-6 text-left hover:bg-white/10 transition-all duration-300 border border-border/50 hover:border-primary/40 group"
           >
             <div className="flex items-center gap-4">
@@ -86,7 +91,7 @@ export default function AccountTypeSelect() {
 
           {/* Locale */}
           <button
-            onClick={() => navigate('/business-onboarding')}
+            onClick={() => { localStorage.setItem('ew_signup_intent', 'business'); navigate('/business-onboarding'); }}
             className="w-full glass rounded-2xl p-6 text-left hover:bg-white/10 transition-all duration-300 border border-border/50 hover:border-accent/40 group"
           >
             <div className="flex items-center gap-4">
