@@ -46,6 +46,9 @@ const AuthenticatedApp = () => {
       <Route path="/home" element={<Home />} />
       <Route path="/scanner" element={<Scanner />} />
       <Route path="/session-confirm" element={<SessionConfirm />} />
+      {/* Il profilo si cura anche da casa: fuori da SessionLayout, che
+          richiede una sessione attiva in un locale */}
+      <Route path="/profile" element={<Profile />} />
 
       {/* Session routes with bottom nav */}
       <Route element={<SessionLayout />}>
@@ -54,7 +57,6 @@ const AuthenticatedApp = () => {
         <Route path="/ev" element={<EVPage />} />
         <Route path="/locale" element={<Locale />} />
         <Route path="/memories" element={<Memories />} />
-        <Route path="/profile" element={<Profile />} />
       </Route>
 
       <Route path="*" element={<PageNotFound />} />

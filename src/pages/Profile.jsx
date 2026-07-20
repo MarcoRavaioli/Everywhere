@@ -1,12 +1,14 @@
 import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Camera, LogOut, Shield, Eye, Bell, Pencil, Check, X, Menu, Store, ChevronRight } from 'lucide-react';
+import { Camera, LogOut, Shield, Eye, Bell, Pencil, Check, X, Menu, Store, ChevronRight, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useApp, ALL_TOPICS } from '@/context/AppContext';
+import { useAuth } from '@/lib/AuthContext';
 import { DEFAULT_AVATAR, AvatarError } from '@/api/avatars';
+import BottomNav from '@/components/everywhere/BottomNav';
 
 function SettingsItem({ icon: Icon, label, value }) {
   return (
@@ -152,9 +154,11 @@ function EditProfileModal({ user, onSave, onClose }) {
 
 export default function Profile() {
   const navigate = useNavigate();
-  const { currentUser, updateProfile, endSession, uploadAvatar } = useApp();
+  const { currentUser, updateProfile, endSession, uploadAvatar, setCurrentUser, isInSession } = useApp();
+  const { logout } = useAuth();
   const [editOpen, setEditOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [photoError, setPhotoError] = useState(null);
   const fileInputRef = useRef(null);
@@ -176,15 +180,36 @@ export default function Profile() {
     }
   };
 
-  const handleLogout = () => {
-    endSession();
-    navigate('/', { replace: true });
+  // Chiude davvero la sessione Supabase: prima veniva solo azzerato
+  // lo stato locale e l'utente si ritrovava di nuovo dentro.
+  const handleLogout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      endSession();
+      await logout();
+      setCurrentUser(null); // copre anche la modalità ospite (nessuna sessione Supabase)
+      navigate('/', { replace: true });
+    } finally {
+      setLoggingOut(false);
+    }
   };
 
   return (
-    <div className="min-h-screen bg-background px-4 py-6">
+    <div className={`min-h-screen bg-background px-4 py-6 ${isInSession ? 'pb-24' : ''}`}>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-foreground">Profilo</h1>
+        <div className="flex items-center gap-2">
+          {!isInSession && (
+            <button
+              onClick={() => navigate('/home')}
+              className="w-10 h-10 rounded-full glass flex items-center justify-center"
+              aria-label="Torna alla home"
+            >
+              <ArrowLeft className="w-4 h-4 text-muted-foreground" />
+            </button>
+          )}
+          <h1 className="text-2xl font-bold text-foreground">Profilo</h1>
+        </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => setEditOpen(true)}
@@ -283,10 +308,11 @@ export default function Profile() {
         {/* Logout */}
         <button
           onClick={handleLogout}
-          className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-destructive hover:bg-destructive/5 transition-colors"
+          disabled={loggingOut}
+          className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-destructive hover:bg-destructive/5 transition-colors disabled:opacity-50"
         >
           <LogOut className="w-4 h-4" />
-          <span className="text-sm font-medium">Esci</span>
+          <span className="text-sm font-medium">{loggingOut ? 'Uscita in corso…' : 'Esci'}</span>
         </button>
       </motion.div>
 
@@ -335,6 +361,9 @@ export default function Profile() {
           </>
         )}
       </AnimatePresence>
+
+      {/* La pagina vive anche fuori sessione: la nav in basso solo quando serve */}
+      {isInSession && <BottomNav />}
     </div>
   );
 }

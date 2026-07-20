@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import EvLogo from '@/components/everywhere/EvLogo';
 import { useApp } from '@/context/AppContext';
+import { useAuth } from '@/lib/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
@@ -342,9 +343,25 @@ function StartSessionScreen() {
 // ─── Main Dashboard ──────────────────────────────────────────────────────────
 export default function BusinessDashboard() {
   const navigate = useNavigate();
-  const { business, setBusiness } = useApp();
+  const { business, setBusiness, setCurrentUser } = useApp();
+  const { logout } = useAuth();
   const [screen, setScreen] = useState(null); // null | 'insight' | 'comms' | 'session'
   const [menuOpen, setMenuOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  // Come nel profilo utente: chiude davvero la sessione Supabase
+  const handleLogout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await logout();
+      setCurrentUser(null);
+      setMenuOpen(false);
+      navigate('/', { replace: true });
+    } finally {
+      setLoggingOut(false);
+    }
+  };
 
   const venueName = business?.name || 'La tua venue';
   const plan = business?.plan || 'pay-per-session';
@@ -481,7 +498,7 @@ export default function BusinessDashboard() {
                 <MenuRow icon={Crown} label="Piano & abbonamento" onClick={() => setMenuOpen(false)} />
                 <MenuRow icon={QrCode} label="QR code sessione attiva" onClick={() => setMenuOpen(false)} />
                 <div className="border-t border-border/40 my-2" />
-                <MenuRow icon={LogOut} label="Esci" className="text-destructive" iconClass="text-destructive" onClick={() => { setMenuOpen(false); navigate('/'); }} />
+                <MenuRow icon={LogOut} label={loggingOut ? 'Uscita in corso…' : 'Esci'} className="text-destructive" iconClass="text-destructive" onClick={handleLogout} />
               </div>
             </motion.div>
           </>

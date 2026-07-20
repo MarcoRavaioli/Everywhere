@@ -1,14 +1,15 @@
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { QrCode } from 'lucide-react';
+import { QrCode, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import EvLogo from '@/components/everywhere/EvLogo';
 import { useApp } from '@/context/AppContext';
+import { DEFAULT_AVATAR } from '@/api/avatars';
 
 export default function Home() {
   const navigate = useNavigate();
-  const { isInSession } = useApp();
+  const { isInSession, currentUser } = useApp();
 
   // If already in session, redirect
   useEffect(() => {
@@ -17,6 +18,18 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center px-6 text-center">
+      {/* Accesso al profilo anche fuori sessione (foto, bio, interessi, logout) */}
+      <button
+        onClick={() => navigate('/profile')}
+        aria-label="Il tuo profilo"
+        className="absolute top-6 right-5 w-11 h-11 rounded-full glass border border-border/50 flex items-center justify-center overflow-hidden hover:border-primary/40 transition-colors"
+      >
+        {currentUser?.photo
+          ? <img src={currentUser.photo} alt="" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.src = DEFAULT_AVATAR; }} />
+          : <User className="w-5 h-5 text-muted-foreground" />
+        }
+      </button>
+
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}

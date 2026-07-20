@@ -93,6 +93,16 @@ export function AppProvider({ children }) {
     if (!authChecked) return;
     if (!authUser) {
       setCurrentUser(prev => (prev?.isGuest ? prev : null));
+      // Logout: azzera lo stato dell'app, altrimenti chi accede dopo
+      // eredita sessione, locale e chat dell'utente precedente
+      setBusiness(null);
+      setIsInSession(false);
+      setCurrentVenue(null);
+      setSessionTimeLeft(0);
+      setSentEVs([]);
+      setMatchedEVs([]);
+      setActiveChats({});
+      setDrinkNotifications([]);
       setProfileChecked(true);
       return;
     }
