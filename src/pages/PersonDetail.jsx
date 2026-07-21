@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, MoreHorizontal, Send } from 'lucide-react';
 import InterestChip from '@/components/everywhere/InterestChip';
 import { useApp } from '@/context/AppContext';
+import { DEFAULT_AVATAR } from '@/api/avatars';
 
 const MAX_NOTE = 280;
 
@@ -12,6 +13,8 @@ export default function PersonDetail() {
   const navigate = useNavigate();
   const { people, sentEVs, sendEV } = useApp();
   const [showSentConfirm, setShowSentConfirm] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [evError, setEvError] = useState(null);
   // 'idle' | 'expanded' | 'sent'
   const [evState, setEvState] = useState('idle');
   const [note, setNote] = useState('');
@@ -31,15 +34,24 @@ export default function PersonDetail() {
     return null;
   }
 
-  const handleEvTap = () => {
-    if (hasSentEV) return;
+  const handleEvTap = async () => {
+    if (hasSentEV || sending) return;
     if (evState === 'idle') {
       setEvState('expanded');
-    } else if (evState === 'expanded') {
-      sendEV(person.id, note.trim() || null);
+      return;
+    }
+    // Conferma solo dopo l'esito del server, non prima
+    setSending(true);
+    setEvError(null);
+    try {
+      await sendEV(person.id, note.trim() || null);
       setEvState('sent');
       setShowSentConfirm(true);
       setTimeout(() => setShowSentConfirm(false), 3000);
+    } catch (err) {
+      setEvError(err?.message ?? 'Invio non riuscito. Riprova.');
+    } finally {
+      setSending(false);
     }
   };
 
@@ -49,7 +61,8 @@ export default function PersonDetail() {
       <div className="relative">
         <div className="aspect-[3/4] max-h-[65vh]">
           <img
-            src={person.photo}
+            src={person.photo || DEFAULT_AVATAR}
+            onError={(e) => { e.currentTarget.src = DEFAULT_AVATAR; }}
             alt={person.name}
             className="w-full h-full object-cover"
           />
@@ -123,12 +136,16 @@ export default function PersonDetail() {
                     </span>
                   )}
                 </div>
+                {evError && (
+                  <p className="px-4 pb-2 text-xs text-destructive">{evError}</p>
+                )}
                 <button
                   onClick={handleEvTap}
-                  className="w-full flex items-center justify-center gap-2 h-12 bg-primary text-primary-foreground font-semibold text-sm glow-pink"
+                  disabled={sending}
+                  className="w-full flex items-center justify-center gap-2 h-12 bg-primary text-primary-foreground font-semibold text-sm glow-pink disabled:opacity-60"
                 >
                   <Send className="w-4 h-4" />
-                  {note.trim() ? 'Invia EV con nota' : 'Invia EV'}
+                  {sending ? 'Invio…' : (note.trim() ? 'Invia EV con nota' : 'Invia EV')}
                 </button>
               </div>
             )}

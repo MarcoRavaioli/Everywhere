@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Send, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useApp } from '@/context/AppContext';
+import { DEFAULT_AVATAR } from '@/api/avatars';
 
 const MAX_NOTE = 280;
 
@@ -11,6 +12,8 @@ export default function PersonCard({ person, index = 0 }) {
   const hasSentEV = sentEVs.includes(person.id);
   const [evState, setEvState] = useState('idle'); // 'idle' | 'expanded' | 'sent'
   const [note, setNote] = useState('');
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState(null);
   const inputRef = useRef(null);
 
   useEffect(() => {
@@ -19,15 +22,24 @@ export default function PersonCard({ person, index = 0 }) {
     }
   }, [evState]);
 
-  const handleEvTap = (e) => {
+  const handleEvTap = async (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (hasSentEV || evState === 'sent') return;
+    if (hasSentEV || evState === 'sent' || sending) return;
     if (evState === 'idle') {
       setEvState('expanded');
-    } else if (evState === 'expanded') {
-      sendEV(person.id, note.trim() || null);
+      return;
+    }
+    // L'invio passa dal server: si mostra "inviato" solo se è andato
+    setSending(true);
+    setError(null);
+    try {
+      await sendEV(person.id, note.trim() || null);
       setEvState('sent');
+    } catch (err) {
+      setError(err?.message ?? 'Invio non riuscito. Riprova.');
+    } finally {
+      setSending(false);
     }
   };
 
@@ -51,9 +63,10 @@ export default function PersonCard({ person, index = 0 }) {
           {/* Photo */}
           <div className="aspect-[3/4] relative">
             <img
-              src={person.photo}
+              src={person.photo || DEFAULT_AVATAR}
               alt={person.name}
               className="w-full h-full object-cover"
+              onError={(e) => { e.currentTarget.src = DEFAULT_AVATAR; }}
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
           </div>
@@ -105,20 +118,25 @@ export default function PersonCard({ person, index = 0 }) {
                       placeholder="Nota opzionale…"
                       className="w-full bg-transparent px-3 py-2 text-xs text-white placeholder:text-white/30 outline-none"
                     />
+                    {error && (
+                      <p className="px-3 pb-1 text-[10px] text-destructive">{error}</p>
+                    )}
                     <div className="flex items-center justify-between px-3 pb-2">
                       <span className="text-[9px] text-white/30">{note.length}/{MAX_NOTE}</span>
                       <div className="flex items-center gap-2">
                         <button
                           onClick={handleCancel}
-                          className="text-[10px] text-white/40 underline underline-offset-2"
+                          disabled={sending}
+                          className="text-[10px] text-white/40 underline underline-offset-2 disabled:opacity-50"
                         >
                           Annulla
                         </button>
                         <button
                           onClick={handleEvTap}
-                          className="px-3 py-1 rounded-lg bg-primary text-white text-[10px] font-semibold glow-pink"
+                          disabled={sending}
+                          className="px-3 py-1 rounded-lg bg-primary text-white text-[10px] font-semibold glow-pink disabled:opacity-60"
                         >
-                          {note.trim() ? 'Invia con nota' : 'Invia EV'}
+                          {sending ? 'Invio…' : (note.trim() ? 'Invia con nota' : 'Invia EV')}
                         </button>
                       </div>
                     </div>

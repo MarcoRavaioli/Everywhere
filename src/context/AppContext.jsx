@@ -1,21 +1,15 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { fetchMyProfile, upsertMyProfile, rowToUser } from '@/api/profiles';
 import { getAvatarUrl, uploadMyAvatar } from '@/api/avatars';
 import { fetchMySession, endMySession } from '@/api/sessions';
+import {
+  fetchPeopleInMyNight, fetchNightHeadcount, fetchMyEvs, fetchMyMatches,
+  sendEv as sendEvApi, ignoreEv as ignoreEvApi,
+} from '@/api/people';
+import { supabase } from '@/lib/supabaseClient';
 
 const AppContext = createContext(null);
-
-const MOCK_PEOPLE = [
-  { id: '1', name: 'Sofia', age: 22, bio: 'Ama i concerti e il buon vino', photo: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&q=80', interests: ['Musica', 'Viaggi', 'Aperitivi'], status: 'single' },
-  { id: '2', name: 'Marco', age: 25, bio: 'DJ il venerdì, esploratore il sabato', photo: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=400&q=80', interests: ['DJ', 'Surf', 'Fotografia'], status: 'single' },
-  { id: '3', name: 'Giulia', age: 23, bio: 'Arte, vino rosso e tramonti', photo: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400&q=80', interests: ['Arte', 'Vino', 'Yoga'], status: 'single' },
-  { id: '4', name: 'Luca', age: 24, bio: 'Fotografo e amante del buon cibo', photo: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400&q=80', interests: ['Fotografia', 'Cucina', 'Cinema'], status: 'single' },
-  { id: '5', name: 'Elena', age: 21, bio: 'Ballerina, sognatrice, nottambula', photo: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=400&q=80', interests: ['Danza', 'Musica', 'Notti'], status: 'single' },
-  { id: '6', name: 'Andrea', age: 26, bio: 'Cocktail maker & music lover', photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&q=80', interests: ['Cocktail', 'Jazz', 'Design'], status: 'single' },
-  { id: '7', name: 'Chiara', age: 22, bio: 'Fashion, musica e tante risate', photo: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=400&q=80', interests: ['Fashion', 'Musica', 'Shopping'], status: 'single' },
-  { id: '8', name: 'Tommaso', age: 27, bio: 'Architetto di giorno, clubber di notte', photo: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&q=80', interests: ['Architettura', 'Club', 'Viaggio'], status: 'single' },
-];
 
 const MOCK_MEMORIES = [
   { id: 'm1', personName: 'Sofia', personPhoto: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&q=80', venue: 'Moon Club', date: '12 Maggio 2024', time: '01:23', image: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=600&q=80', type: 'known' },
@@ -50,11 +44,16 @@ export function AppProvider({ children }) {
   const [session, setSession] = useState(null);
   const [sessionChecked, setSessionChecked] = useState(false);
   const [nowTick, setNowTick] = useState(() => Date.now());
-  const [people] = useState(MOCK_PEOPLE);
-  const [sentEVs, setSentEVs] = useState([]);
-  // Demo: alcune persone hanno già inviato un EV all'utente, alcune con nota
-  const [receivedEVs, setReceivedEVs] = useState(['3', '6', '7']);
-  const [matchedEVs, setMatchedEVs] = useState([]); // reciprocal matches
+  // Persone ed EV reali della serata in corso
+  const [people, setPeople] = useState([]);
+  const [peopleLoading, setPeopleLoading] = useState(false);
+  const [peopleError, setPeopleError] = useState(null);
+  const [headcount, setHeadcount] = useState(0);
+  const [sentEVs, setSentEVs] = useState([]);      // id delle persone a cui ho inviato
+  const [receivedEVs, setReceivedEVs] = useState([]); // id di chi mi ha inviato
+  const [matchedEVs, setMatchedEVs] = useState([]);   // id delle persone con cui ho un match
+  const [evNotes, setEvNotes] = useState({});         // personId -> nota
+  const evIdByPerson = useRef({});                    // personId -> id dell'EV ricevuto
   const [memories] = useState(MOCK_MEMORIES);
   const [events] = useState(MOCK_EVENTS);
   const [venueMessages] = useState(MOCK_VENUE_MESSAGES);
@@ -229,41 +228,119 @@ export function AppProvider({ children }) {
     }
   }, [authUser]);
 
-  // Demo: note allegate agli EV già ricevuti
-  const [evNotes, setEvNotes] = useState({
-    '3': 'Ciao! Ti ho notato sul dancefloor, ci prenderemo un drink? 🍹',
-    '7': 'Ho visto che ti piace la stessa musica. Parliamo!',
-  });
+  // ─── Persone, EV e match reali ──────────────────────────────────────
+  // Le pagine consumano le stesse forme di prima (array di id, mappa
+  // delle note): cambia la sorgente, non l'interfaccia.
 
-  const sendEV = useCallback((personId, note = null) => {
-    setSentEVs(prev => {
-      if (prev.includes(personId)) return prev;
-      return [...prev, personId];
+  const refreshPeople = useCallback(async () => {
+    if (!session) {
+      setPeople([]);
+      setHeadcount(0);
+      return;
+    }
+    setPeopleError(null);
+    try {
+      const [list, count] = await Promise.all([
+        fetchPeopleInMyNight(),
+        fetchNightHeadcount(),
+      ]);
+      setPeople(list);
+      setHeadcount(count);
+    } catch (err) {
+      console.error('Caricamento persone fallito:', err);
+      setPeopleError('Non riesco a caricare chi è presente. Controlla la connessione.');
+    }
+  }, [session]);
+
+  const refreshEvs = useCallback(async () => {
+    if (!session?.nightId) {
+      setSentEVs([]);
+      setReceivedEVs([]);
+      setMatchedEVs([]);
+      setEvNotes({});
+      evIdByPerson.current = {};
+      return;
+    }
+    try {
+      const [{ sent, received, notes }, matches] = await Promise.all([
+        fetchMyEvs(session.nightId),
+        fetchMyMatches(),
+      ]);
+      const matchedIds = matches.map(m => m.personId);
+      evIdByPerson.current = Object.fromEntries(received.map(r => [r.personId, r.id]));
+      setSentEVs(sent);
+      // Chi è già diventato match esce dalla lista "ricevuti"
+      setReceivedEVs(received.map(r => r.personId).filter(id => !matchedIds.includes(id)));
+      setMatchedEVs(matchedIds);
+      setEvNotes(notes);
+    } catch (err) {
+      console.error('Caricamento EV fallito:', err);
+    }
+  }, [session?.nightId]);
+
+  // Caricamento iniziale quando si entra in una serata
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    setPeopleLoading(true);
+    Promise.all([refreshPeople(), refreshEvs()]).finally(() => {
+      if (!cancelled) setPeopleLoading(false);
     });
-    // Simulate receiving an EV back → becomes a match
-    setTimeout(() => {
-      if (Math.random() > 0.4) {
-        setReceivedEVs(prev => prev.includes(personId) ? prev : [...prev, personId]);
-        // Simulate the other person attaching a note back sometimes
-        if (note) {
-          setEvNotes(prev => ({ ...prev, [personId]: note }));
-        }
-      }
-    }, 2500);
+    return () => { cancelled = true; };
+  }, [session?.nightId, refreshPeople, refreshEvs]);
+
+  // Realtime: arrivi e uscite dalla serata, EV ricevuti, match.
+  // Senza questo la lista sarebbe ferma al momento dell'ingresso.
+  useEffect(() => {
+    if (!session?.nightId || !authUser) return;
+    const channel = supabase
+      .channel(`night:${session.nightId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'sessions', filter: `night_id=eq.${session.nightId}` },
+        () => refreshPeople()
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'evs', filter: `receiver_id=eq.${authUser.id}` },
+        () => refreshEvs()
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'matches' },
+        () => refreshEvs()
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [session?.nightId, authUser?.id, refreshPeople, refreshEvs]);
+
+  // Invia un EV. Ritorna { matched } perché la UI possa festeggiare.
+  const sendEV = useCallback(async (personId, note = null) => {
+    const result = await sendEvApi(personId, note);
+    setSentEVs(prev => (prev.includes(personId) ? prev : [...prev, personId]));
+    if (result.matched) {
+      setMatchedEVs(prev => (prev.includes(personId) ? prev : [...prev, personId]));
+      setReceivedEVs(prev => prev.filter(id => id !== personId));
+    }
+    return result;
   }, []);
 
-  const sendEVBack = useCallback((personId) => {
-    // Reciprocate: move from received to matched
-    setSentEVs(prev => prev.includes(personId) ? prev : [...prev, personId]);
-    setMatchedEVs(prev => prev.includes(personId) ? prev : [...prev, personId]);
-    setReceivedEVs(prev => prev.filter(id => id !== personId));
-    // Init empty chat
-    setActiveChats(prev => ({ ...prev, [personId]: prev[personId] || [] }));
-  }, []);
+  // Ricambiare è semplicemente inviare: il server rileva la reciprocità
+  const sendEVBack = useCallback(async (personId) => sendEV(personId), [sendEV]);
 
-  const ignoreEV = useCallback((personId) => {
+  const ignoreEV = useCallback(async (personId) => {
+    const evId = evIdByPerson.current[personId];
+    // Sparisce subito dalla lista: l'attesa di rete qui non aiuta nessuno
     setReceivedEVs(prev => prev.filter(id => id !== personId));
-  }, []);
+    if (!evId) return;
+    try {
+      await ignoreEvApi(evId);
+    } catch (err) {
+      console.error('Ignora EV fallita:', err);
+      await refreshEvs(); // ripristina lo stato vero se il server ha rifiutato
+    }
+  }, [refreshEvs]);
 
   const sendChatMessage = useCallback((personId, text) => {
     const msg = { id: Date.now(), from: 'me', text, time: new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) };
@@ -320,7 +397,7 @@ export function AppProvider({ children }) {
       business, setBusiness,
       isInSession, currentVenue, currentNight, sessionTimeLeft, formatTime,
       session, sessionChecked, refreshSession, endSession,
-      people,
+      people, peopleLoading, peopleError, headcount, refreshPeople,
       sentEVs, sendEV, sendEVBack, ignoreEV,
       evNotes,
       receivedEVs, setReceivedEVs,
