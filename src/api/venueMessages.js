@@ -18,6 +18,7 @@ const DB_ERRORS = {
   message_body_required: 'Il messaggio è obbligatorio.',
   message_body_too_long: 'Il messaggio è troppo lungo (max 1000 caratteri).',
   night_not_of_venue: 'Quella serata non appartiene a questo locale.',
+  qr_not_of_venue: 'Quella sala non appartiene a questo locale.',
 };
 
 function toMessageError(error, fallback) {
@@ -34,6 +35,7 @@ function rowToMessage(row) {
     body: row.body,
     pinned: row.pinned,
     nightId: row.night_id,
+    qrCodeId: row.qr_code_id,
     createdAt: row.created_at,
     // La UI mostra solo l'ora: le comunicazioni sono della serata in corso
     time: new Date(row.created_at).toLocaleTimeString('it-IT', {
@@ -74,7 +76,14 @@ export async function fetchVenueMessages(venueId) {
   return (data ?? []).map(rowToMessage);
 }
 
-export async function createVenueMessage(venueId, { type, title, body, nightId, pinned } = {}) {
+// Destinatari, dal più ampio al più stretto:
+//   niente        → tutto il locale
+//   nightId       → solo quella serata
+//   qrCodeId      → solo chi è in quella sala adesso (la serata si ricava dal QR)
+export async function createVenueMessage(
+  venueId,
+  { type, title, body, nightId, qrCodeId, pinned } = {}
+) {
   const { data, error } = await supabase.rpc('create_venue_message', {
     p_venue: venueId,
     p_type: type,
@@ -82,6 +91,7 @@ export async function createVenueMessage(venueId, { type, title, body, nightId, 
     p_body: body,
     p_night: nightId ?? null,
     p_pinned: !!pinned,
+    p_qr_code: qrCodeId ?? null,
   });
   if (error) {
     console.error('create_venue_message fallita:', error);

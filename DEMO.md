@@ -20,12 +20,16 @@ Senza queste **non funziona niente**. Supabase → SQL Editor → una alla volta
 in ordine (vedi [TESTING.md](TESTING.md) §0.1 per l'elenco completo):
 
 ```
-20260719_initial_schema     20260720_night_qr_codes
-20260720_venues_rpc         20260721_people_and_evs
-20260720_venue_details      20260721_venue_messages
+20260719_initial_schema     20260721_people_and_evs
+20260720_venues_rpc         20260721_venue_messages
+20260720_venue_details      20260721_venue_messages_rooms
 20260720_storage_hardening  20260721_memories
 20260720_nights             20260721_blocks_reports
+20260720_night_qr_codes
 ```
+
+`20260721_venue_messages_rooms` va **dopo** `20260721_venue_messages`:
+aggiunge la possibilità di scrivere a una singola sala.
 
 Ognuna deve dire *"Success"*. Se una fallisce, fermati: le successive
 falliscono a cascata.
@@ -108,6 +112,10 @@ Se questo funziona, funzionerà anche per loro.
   sala e **il tempo non riparte**.
 - **La comunicazione del locale**: dal tuo portatile pubblichi una promo →
   compare sui loro telefoni senza che tocchino nulla.
+- **Il messaggio a una sola sala**: in Comunicazioni scegli *"Solo chi è in:
+  Cucina"* → lo vede **soltanto** chi è entrato da quel QR. Chi è in salotto
+  non vede nulla. È l'effetto più forte da mostrare: dimostra che il locale
+  parla a chi ha davvero davanti, stanza per stanza.
 - **Chiusura serata**: chiudi dalla dashboard → escono tutti insieme e i QR
   si spengono. Buona chiusura della demo.
 

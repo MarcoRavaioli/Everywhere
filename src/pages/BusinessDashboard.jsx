@@ -137,7 +137,8 @@ function CommunicationsScreen({ venue }) {
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [pinned, setPinned] = useState(false);
-  const [nightId, setNightId] = useState('');   // '' = vale per tutto il locale
+  // '' = tutto il locale · 'night:<id>' = una serata · 'qr:<id>' = una sala
+  const [target, setTarget] = useState('');
   const [nights, setNights] = useState([]);
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -170,16 +171,19 @@ function CommunicationsScreen({ venue }) {
     setError(null);
     setBusy(true);
     try {
+      const [level, id] = target.split(':');
       await createVenueMessage(venue.id, {
         type,
         title: title.trim(),
         body: body.trim(),
-        nightId: nightId || null,
+        nightId: level === 'night' ? id : null,
+        qrCodeId: level === 'qr' ? id : null,
         pinned,
       });
       setTitle('');
       setBody('');
       setPinned(false);
+      setTarget('');
       setSent(true);
       setTimeout(() => setSent(false), 3000);
       await load();
@@ -205,6 +209,10 @@ function CommunicationsScreen({ venue }) {
   };
 
   const openNights = nights.filter(n => nightState(n) !== 'closed');
+  // etichette delle sale, per mostrare a chi è andato ogni messaggio
+  const qrLabelById = Object.fromEntries(
+    nights.flatMap(n => (n.qrCodes ?? []).map(qr => [qr.id, qr.label]))
+  );
 
   return (
     <div className="space-y-5">
@@ -255,15 +263,28 @@ function CommunicationsScreen({ venue }) {
       <div>
         <label className="text-xs text-muted-foreground uppercase tracking-wider mb-2 block">Destinatari</label>
         <select
-          value={nightId}
-          onChange={e => setNightId(e.target.value)}
+          value={target}
+          onChange={e => setTarget(e.target.value)}
           className="w-full h-12 px-3 bg-secondary border border-border/50 rounded-xl text-sm text-foreground outline-none focus:border-primary/50"
         >
           <option value="">Chiunque sia nel locale</option>
           {openNights.map(n => (
-            <option key={n.id} value={n.id}>Solo: {n.title || 'Serata senza nome'}</option>
+            <optgroup key={n.id} label={n.title || 'Serata senza nome'}>
+              <option value={`night:${n.id}`}>
+                Tutta la serata
+              </option>
+              {(n.qrCodes ?? []).map(qr => (
+                <option key={qr.id} value={`qr:${qr.id}`}>
+                  Solo chi è in: {qr.label}
+                </option>
+              ))}
+            </optgroup>
           ))}
         </select>
+        <p className="text-[10px] text-muted-foreground/60 mt-1 leading-relaxed">
+          Scegliendo una sala, il messaggio lo vede solo chi è entrato da quel
+          QR in questo momento. Chi cambia sala smette di vederlo.
+        </p>
       </div>
 
       <label className="flex items-center gap-2 cursor-pointer">
@@ -317,7 +338,11 @@ function CommunicationsScreen({ venue }) {
                     <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">{m.body}</p>
                     <p className="text-[10px] text-muted-foreground/60 mt-1">
                       {MESSAGE_TYPES.find(t => t.id === m.type)?.label ?? m.type}
-                      {m.nightId ? ' · solo una serata' : ' · tutto il locale'} · {m.time}
+                      {' · '}
+                      {m.qrCodeId
+                        ? `solo ${qrLabelById[m.qrCodeId] ?? 'una sala'}`
+                        : m.nightId ? 'una serata' : 'tutto il locale'}
+                      {' · '}{m.time}
                     </p>
                   </div>
                   {m.pinned && (
