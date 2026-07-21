@@ -177,12 +177,29 @@ come reali (vedi l'avviso sulla schermata Insight).
       ricaricare; un messaggio legato a una serata non si vede da un'altra;
       elimina e "in evidenza" funzionano
 
-**3g-2 — Memories e drink**
-- [ ] Memories: recap serate da `sessions` + `evs` + `matches` (view SQL),
-      foto nel bucket `memories`
-- [ ] Drink: flusso reale con stato `pending_payment` (Stripe allo Step 6);
-      oggi il modale simula un pagamento con importi finti
-- [ ] **Test:** giro completo dell'app senza incontrare più dati finti
+**✅ 3g-2a — Ricordi reali** (implementato, da testare)
+- [x] RPC `my_memories()` (le persone con cui ho un match, con locale,
+      serata e data) e `my_night_recaps()` (le serate a cui ho partecipato,
+      con EV inviati/ricevuti e match)
+- [x] Nessuna tabella nuova: i numeri si derivano da `sessions` + `evs` +
+      `matches`, così non c'è nulla da tenere sincronizzato
+- [x] I ricordi si consultano anche fuori sessione (non servono serate in corso)
+- [x] Un nuovo match aggiorna i ricordi in tempo reale
+- [x] Rimossi gli annunci di eventi futuri completamente inventati
+      (locali, date e immagini di repertorio)
+- [x] Stati loading / vuoto / errore su entrambe le schede
+- [x] **`AppContext` non contiene più alcun dato finto**
+- [ ] **Test:** dopo un match la persona compare in "Conosciuti"; la serata
+      compare in "Serate" coi conteggi giusti; senza dati si vedono gli
+      stati vuoti e non schermate mute
+
+**3g-2b — Drink**
+- [ ] Oggi il modale simula un pagamento (campi carta finti, importi finti)
+      e dichiara "Drink offerto!" senza che nulla accada
+- [ ] Va reso reale con stato `pending_payment`, oppure dichiarato
+      esplicitamente non disponibile fino a Stripe (Step 6)
+- [ ] Nota: le foto dei locali non esistono ancora (debito D5), quindi le
+      card di Ricordi usano un fondo grafico invece di immagini inventate
 
 **3h — Blocco e segnalazione** ← *obbligatorio per gli store*
 - [ ] Tabella `blocks` + `reports` con motivo
@@ -307,7 +324,7 @@ Cose consapevolmente lasciate indietro, con il perché.
 
 | # | Debito | Perché esiste | Impatto |
 |---|---|---|---|
-| D1 | `MOCK_MEMORIES` e `MOCK_EVENTS` ancora in `AppContext` (`MOCK_PEOPLE` rimosso in 3e, `MOCK_VENUE_MESSAGES` in 3g-1) | Sostituiti in 3g-2 | Medio: la pagina Ricordi è ancora finta |
+| ~~D1~~ | ~~Dati finti in `AppContext`~~ | **Risolto**: `MOCK_PEOPLE` (3e), `MOCK_VENUE_MESSAGES` (3g-1), `MOCK_MEMORIES` e `MOCK_EVENTS` (3g-2a). Resta finto solo il modale drink | — |
 | D2 | Modalità ospite | Serviva per navigare la demo senza login | Medio: va rimossa o confinata, oggi crea stati ibridi |
 | D3 | Schermata Insight con dati inventati | Le statistiche reali richiedono aggregazioni | Basso: la UI lo dichiara |
 | ~~D4~~ | ~~Comunicazioni: UI 4 categorie, DB 2~~ | **Risolto in 3g-1**: tipi allineati (promo, lineup, info, event) | — |

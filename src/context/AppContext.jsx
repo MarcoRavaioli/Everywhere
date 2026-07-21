@@ -9,21 +9,10 @@ import {
 } from '@/api/people';
 import { fetchMessagesByPerson, sendMessage as sendMessageApi, rowToMessage, ChatError } from '@/api/chat';
 import { fetchVisibleVenueMessages } from '@/api/venueMessages';
+import { fetchMyMemories, fetchMyNightRecaps } from '@/api/memories';
 import { supabase } from '@/lib/supabaseClient';
 
 const AppContext = createContext(null);
-
-const MOCK_MEMORIES = [
-  { id: 'm1', personName: 'Sofia', personPhoto: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&q=80', venue: 'Moon Club', date: '12 Maggio 2024', time: '01:23', image: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=600&q=80', type: 'known' },
-  { id: 'm2', personName: 'Luca', personPhoto: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400&q=80', venue: 'Moon Club', date: '10 Maggio 2024', time: '23:45', image: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=600&q=80', type: 'known' },
-  { id: 'm3', personName: 'Elena', personPhoto: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=400&q=80', venue: 'Neon Garden', date: '5 Maggio 2024', time: '02:10', image: 'https://images.unsplash.com/photo-1504680177321-2e6a879aac86?w=600&q=80', type: 'known' },
-];
-
-const MOCK_EVENTS = [
-  { id: 'e1', venueName: 'Moon Club', venueImage: 'https://images.unsplash.com/photo-1566417713940-fe7c7e31e5f2?w=600&q=80', date: '12 Maggio 2024', evSent: 4, evReceived: 2, matches: 1 },
-  { id: 'e2', venueName: 'Neon Garden', venueImage: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=600&q=80', date: '5 Maggio 2024', evSent: 2, evReceived: 3, matches: 2 },
-  { id: 'e3', venueName: 'Stellar Rave', venueImage: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=600&q=80', date: '1 Aprile 2024', evSent: 6, evReceived: 1, matches: 0 },
-];
 
 export const ALL_TOPICS = [
   'Musica', 'Vino', 'Viaggi', 'Concerti', 'Cinema', 'Arte', 'Sport',
@@ -51,8 +40,10 @@ export function AppProvider({ children }) {
   const [evNotes, setEvNotes] = useState({});         // personId -> nota
   const evIdByPerson = useRef({});                    // personId -> id dell'EV ricevuto
   const matchIdByPerson = useRef({});                 // personId -> id del match (per la chat)
-  const [memories] = useState(MOCK_MEMORIES);
-  const [events] = useState(MOCK_EVENTS);
+  const [memories, setMemories] = useState([]);
+  const [events, setEvents] = useState([]);
+  const [memoriesLoading, setMemoriesLoading] = useState(false);
+  const [memoriesError, setMemoriesError] = useState(null);
   const [venueMessages, setVenueMessages] = useState([]);
   const [drinkNotifications, setDrinkNotifications] = useState([]);
   const [activeChats, setActiveChats] = useState({}); // personId -> messages[]
@@ -250,6 +241,32 @@ export function AppProvider({ children }) {
     }
   }, [session]);
 
+  const refreshMemories = useCallback(async () => {
+    if (!authUser) {
+      setMemories([]);
+      setEvents([]);
+      return;
+    }
+    setMemoriesLoading(true);
+    setMemoriesError(null);
+    try {
+      const [mem, recaps] = await Promise.all([fetchMyMemories(), fetchMyNightRecaps()]);
+      setMemories(mem);
+      setEvents(recaps);
+    } catch (err) {
+      console.error('Caricamento ricordi fallito:', err);
+      setMemoriesError('Non riesco a caricare i tuoi ricordi. Controlla la connessione.');
+    } finally {
+      setMemoriesLoading(false);
+    }
+  }, [authUser]);
+
+  // I ricordi non dipendono da una serata in corso: si guardano da casa
+  useEffect(() => {
+    if (!authChecked) return;
+    refreshMemories();
+  }, [authChecked, refreshMemories]);
+
   const refreshVenueMessages = useCallback(async () => {
     if (!session) {
       setVenueMessages([]);
@@ -340,7 +357,7 @@ export function AppProvider({ children }) {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'matches' },
-        () => refreshEvs()
+        () => { refreshEvs(); refreshMemories(); }
       )
       // La RLS lascia passare solo i messaggi dei match di cui faccio
       // parte: non serve (e non si potrebbe) filtrare per match qui.
@@ -367,7 +384,7 @@ export function AppProvider({ children }) {
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [session?.nightId, authUser?.id, refreshPeople, refreshEvs, refreshVenueMessages, appendMessage]);
+  }, [session?.nightId, authUser?.id, refreshPeople, refreshEvs, refreshVenueMessages, refreshMemories, appendMessage]);
 
   // Invia un EV. Ritorna { matched } perché la UI possa festeggiare.
   const sendEV = useCallback(async (personId, note = null) => {
@@ -444,7 +461,7 @@ export function AppProvider({ children }) {
       evNotes,
       receivedEVs, setReceivedEVs,
       matchedEVs,
-      memories, events,
+      memories, events, memoriesLoading, memoriesError, refreshMemories,
       venueMessages,
       drinkNotifications, sendDrink, confirmDrinkPayment,
       activeChats, sendChatMessage,
