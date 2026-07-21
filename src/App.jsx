@@ -5,6 +5,7 @@ import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-d
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import { AppProvider } from '@/context/AppContext';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 // Pages
 import AccountTypeSelect from '@/pages/AccountTypeSelect';
@@ -67,18 +68,20 @@ const AuthenticatedApp = () => {
 
 function App() {
   return (
-    <AuthProvider>
-      <QueryClientProvider client={queryClientInstance}>
-        <AppProvider>
-          <Router>
-            <div className="dark">
-              <AuthenticatedApp />
-            </div>
-          </Router>
-          <Toaster />
-        </AppProvider>
-      </QueryClientProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <QueryClientProvider client={queryClientInstance}>
+          <AppProvider>
+            <Router>
+              <div className="dark">
+                <AuthenticatedApp />
+              </div>
+            </Router>
+            <Toaster />
+          </AppProvider>
+        </QueryClientProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   )
 }
 

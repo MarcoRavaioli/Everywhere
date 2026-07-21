@@ -247,8 +247,8 @@ Da completare **tutti** prima di aprire a persone che non conosci:
 - [ ] Test d'integrazione sulle RPC (i casi da avversario, oggi fatti a mano)
 - [ ] CI su GitHub Actions: lint + build + test a ogni push
 - [ ] **14 errori di lint** aperti (import inutilizzati, eredità della demo)
-- [ ] **Nessun error boundary React**: un errore in un componente porta a
-      schermata bianca invece che a un messaggio
+- [x] Error boundary React attivo (verificato provocando un errore vero);
+      è anche il punto in cui agganciare Sentry allo Step 4
 - [ ] Accessibilità: contrasti, focus, `aria-label` sui bottoni-icona
 
 ### Operatività
@@ -286,7 +286,7 @@ Cose consapevolmente lasciate indietro, con il perché.
 | D9 | Nessun test automatico | Velocità nelle fasi iniziali | Alto e crescente |
 | D10 | Bundle unico da 1,14 MB | Nessun code splitting | Medio: prima apertura lenta in 3G |
 | D11 | Geocoding assente | Rimandato | Basso finché non serve "locali vicini" |
-| D12 | Nessun error boundary | Mai aggiunto | Medio: errore = schermata bianca |
+| ~~D12~~ | ~~Nessun error boundary~~ | **Risolto**: `ErrorBoundary` attorno all'app, verificato con un guasto reale | — |
 
 ---
 
