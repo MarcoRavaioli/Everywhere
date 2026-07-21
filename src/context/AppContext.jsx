@@ -45,7 +45,6 @@ export function AppProvider({ children }) {
   const [memoriesLoading, setMemoriesLoading] = useState(false);
   const [memoriesError, setMemoriesError] = useState(null);
   const [venueMessages, setVenueMessages] = useState([]);
-  const [drinkNotifications, setDrinkNotifications] = useState([]);
   const [activeChats, setActiveChats] = useState({}); // personId -> messages[]
   // Il tempo rimasto si calcola dalla scadenza reale invece di scalare
   // un contatore: così un reload (o il telefono in tasca) non lo falsa.
@@ -108,7 +107,6 @@ export function AppProvider({ children }) {
       setMatchedEVs([]);
       setActiveChats({});
       setVenueMessages([]);
-      setDrinkNotifications([]);
       setProfileChecked(true);
       return;
     }
@@ -424,25 +422,6 @@ export function AppProvider({ children }) {
     appendMessage(personId, rowToMessage(row, authUser?.id, personId));
   }, [authUser?.id, appendMessage]);
 
-  const sendDrink = useCallback((fromPersonId, toPerson) => {
-    const notification = {
-      id: Date.now(),
-      from: fromPersonId,
-      to: toPerson.id,
-      toName: toPerson.name,
-      toPhoto: toPerson.photo,
-      status: 'pending_payment',
-    };
-    setDrinkNotifications(prev => [...prev, notification]);
-    return notification;
-  }, []);
-
-  const confirmDrinkPayment = useCallback((notifId) => {
-    setDrinkNotifications(prev =>
-      prev.map(n => n.id === notifId ? { ...n, status: 'sent' } : n)
-    );
-  }, []);
-
   const formatTime = useCallback((seconds) => {
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
@@ -463,7 +442,6 @@ export function AppProvider({ children }) {
       matchedEVs,
       memories, events, memoriesLoading, memoriesError, refreshMemories,
       venueMessages,
-      drinkNotifications, sendDrink, confirmDrinkPayment,
       activeChats, sendChatMessage,
     }}>
       {children}

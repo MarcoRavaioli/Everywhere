@@ -193,13 +193,21 @@ come reali (vedi l'avviso sulla schermata Insight).
       compare in "Serate" coi conteggi giusti; senza dati si vedono gli
       stati vuoti e non schermate mute
 
-**3g-2b — Drink**
-- [ ] Oggi il modale simula un pagamento (campi carta finti, importi finti)
-      e dichiara "Drink offerto!" senza che nulla accada
-- [ ] Va reso reale con stato `pending_payment`, oppure dichiarato
-      esplicitamente non disponibile fino a Stripe (Step 6)
+**✅ 3g-2b — Drink: disattivato onestamente** (implementato)
+- [x] **Deciso:** niente flusso finto. Il modale chiedeva numero di carta,
+      scadenza e CVV, mostrava importi inventati (€9 + €1) e dichiarava
+      "Drink offerto!" senza che accadesse nulla
+- [x] La voce resta visibile con badge "Presto" e la spiegazione che
+      arriverà coi pagamenti in-app: nessun dato di pagamento viene chiesto
+- [x] Rimosso lo stato simulato (`sendDrink`, `confirmDrinkPayment`,
+      `drinkNotifications`)
+- [ ] Riattivazione allo **Step 6** con Stripe e stato `pending_payment`
 - [ ] Nota: le foto dei locali non esistono ancora (debito D5), quindi le
       card di Ricordi usano un fondo grafico invece di immagini inventate
+
+> **Step 3 completato per i dati:** nessuna schermata dell'app mostra più
+> contenuti inventati. Resta dimostrativa solo la pagina Insight della
+> dashboard, che però lo dichiara.
 
 **3h — Blocco e segnalazione** ← *obbligatorio per gli store*
 - [ ] Tabella `blocks` + `reports` con motivo
