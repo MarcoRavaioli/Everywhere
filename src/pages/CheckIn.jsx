@@ -1,13 +1,13 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { CheckCircle, AlertCircle, Clock, MapPin } from 'lucide-react';
+import { CheckCircle, AlertCircle, Clock, MapPin, LogOut, ArrowRightLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import EvLogo from '@/components/everywhere/EvLogo';
 import EmailAuthForm from '@/components/everywhere/EmailAuthForm';
 import { useAuth } from '@/lib/AuthContext';
 import { useApp } from '@/context/AppContext';
-import { checkIn, isValidToken, SessionError } from '@/api/sessions';
+import { scanQr, isValidToken, SessionError } from '@/api/sessions';
 
 /**
  * Destinazione del QR: /checkin?t=<token>
@@ -23,18 +23,18 @@ export default function CheckIn() {
 
   const [status, setStatus] = useState('idle'); // idle | working | done | error
   const [error, setError] = useState(null);
-  const [session, setSession] = useState(null);
+  const [result, setResult] = useState(null);
 
   const run = useCallback(async () => {
     setStatus('working');
     setError(null);
     try {
-      const s = await checkIn(token);
-      setSession(s);
+      const r = await scanQr(token);
+      setResult(r);
       await refreshSession();
       setStatus('done');
     } catch (err) {
-      setError(err instanceof SessionError ? err.message : 'Ingresso non riuscito. Riprova.');
+      setError(err instanceof SessionError ? err.message : 'Operazione non riuscita. Riprova.');
       setStatus('error');
     }
   }, [token, refreshSession]);
@@ -145,7 +145,7 @@ export default function CheckIn() {
     return (
       <Frame>
         <div className="w-10 h-10 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
-        <p className="text-sm text-muted-foreground mt-4">Ingresso in corso…</p>
+        <p className="text-sm text-muted-foreground mt-4">Un attimo…</p>
       </Frame>
     );
   }
@@ -155,7 +155,7 @@ export default function CheckIn() {
     return (
       <Frame>
         <AlertCircle className="w-10 h-10 text-destructive" />
-        <h1 className="text-xl font-bold text-foreground mt-4">Non è stato possibile entrare</h1>
+        <h1 className="text-xl font-bold text-foreground mt-4">Non è stato possibile</h1>
         <p className="text-xs text-muted-foreground mt-2 leading-relaxed">{error}</p>
         <div className="w-full space-y-2 mt-8">
           <Button
@@ -176,11 +176,82 @@ export default function CheckIn() {
     );
   }
 
-  // 5. Dentro
-  const secondsLeft = session
-    ? Math.max(0, Math.floor((new Date(session.expiresAt).getTime() - Date.now()) / 1000))
+  // 5a. Uscita: QR di uscita inquadrato mentre si era dentro
+  if (result?.action === 'checked_out') {
+    return (
+      <Frame>
+        <motion.div
+          initial={{ scale: 0.6, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ type: 'spring', stiffness: 200, damping: 18 }}
+          className="w-20 h-20 rounded-full bg-secondary flex items-center justify-center"
+        >
+          <LogOut className="w-9 h-9 text-muted-foreground" />
+        </motion.div>
+
+        <h1 className="text-2xl font-bold text-foreground mt-6">Sei uscito</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          {result.venueName}
+          {result.nightTitle ? ` · ${result.nightTitle}` : ''}
+        </p>
+        <p className="text-xs text-muted-foreground/70 mt-4 leading-relaxed max-w-[280px]">
+          Non sei più visibile alle persone della serata. I tuoi match e le
+          conversazioni restano al loro posto.
+        </p>
+
+        <Button
+          onClick={() => navigate('/home', { replace: true })}
+          className="w-full h-13 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold mt-8 glow-pink"
+        >
+          Torna alla home
+        </Button>
+      </Frame>
+    );
+  }
+
+  // 5b. Cambio sala: la sessione continua, cambia solo dove sei
+  const secondsLeft = result?.session
+    ? Math.max(0, Math.floor((new Date(result.session.expiresAt).getTime() - Date.now()) / 1000))
     : 0;
 
+  if (result?.action === 'moved') {
+    return (
+      <Frame>
+        <motion.div
+          initial={{ scale: 0.6, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ type: 'spring', stiffness: 200, damping: 18 }}
+          className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center glow-pink"
+        >
+          <ArrowRightLeft className="w-9 h-9 text-primary" />
+        </motion.div>
+
+        <h1 className="text-2xl font-bold text-foreground mt-6">Ora sei in</h1>
+        <p className="text-xl font-bold text-primary mt-1">{result.roomLabel}</p>
+        <p className="text-xs text-muted-foreground mt-2 leading-relaxed max-w-[280px]">
+          La tua sessione continua: sei sempre alla stessa serata, il tempo non
+          riparte da capo.
+        </p>
+
+        <div className="flex items-center gap-1.5 text-muted-foreground mt-6">
+          <Clock className="w-3.5 h-3.5" />
+          <span className="text-xs">Restano</span>
+        </div>
+        <p className="text-2xl font-space font-bold text-foreground mt-1">
+          {formatTime(secondsLeft)}
+        </p>
+
+        <Button
+          onClick={() => navigate('/session', { replace: true })}
+          className="w-full h-14 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-base mt-8 glow-pink"
+        >
+          Vedi chi c'è
+        </Button>
+      </Frame>
+    );
+  }
+
+  // 5c. Ingresso
   return (
     <Frame>
       <motion.div
@@ -194,15 +265,15 @@ export default function CheckIn() {
 
       <p className="text-muted-foreground text-sm mt-6">Sei entrato in</p>
       <h1 className="text-3xl font-bold text-foreground mt-1">
-        {session?.venue?.name ?? 'Locale'}
+        {result?.venueName ?? 'Locale'}
       </h1>
-      {session?.night?.title && (
-        <p className="text-sm text-primary mt-1">{session.night.title}</p>
+      {result?.nightTitle && (
+        <p className="text-sm text-primary mt-1">{result.nightTitle}</p>
       )}
-      {session?.venue?.city && (
+      {result?.roomLabel && (
         <p className="text-[11px] text-muted-foreground mt-1 flex items-center gap-1">
           <MapPin className="w-3 h-3" />
-          {session.venue.city}
+          {result.roomLabel}
         </p>
       )}
 

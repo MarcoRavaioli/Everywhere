@@ -178,6 +178,21 @@ Tutto ciò che è stato consapevolmente rimandato, in un unico posto.
 
 ### Step 3 — App funzionante con dati reali (in corso)
 
+**✅ 3d-3 — QR di uscita e uscita volontaria** (implementato, da testare)
+- [x] Un QR può essere di **ingresso** o di **uscita**: inquadrare quello di
+      uscita chiude la sessione
+- [x] Il QR di uscita **non rispetta finestre orarie** e funziona anche a
+      serata chiusa: negare l'uscita non protegge nessuno
+- [x] `check_in` ora dice cosa è successo (`checked_in` / `moved` /
+      `checked_out`), con schermate distinte per ognuno
+- [x] Si può eliminare l'unico QR di uscita, ma non l'unico di ingresso
+      (renderebbe la serata irraggiungibile)
+- [x] Lato utente: **"Esci dalla serata"** nel profilo, distinto dal logout.
+      Prima l'unico modo per smettere di essere visibili era uscire dall'account
+- [ ] **Test:** inquadro il QR di uscita → esco e non compaio più a chi resta;
+      lo inquadro senza essere dentro → messaggio chiaro; "Esci dalla serata"
+      lascia l'account attivo
+
 **3d-2 — Scanner con fotocamera**
 - [ ] Lettura QR dalla fotocamera in-app. Oggi funziona già inquadrando il QR
       con la fotocamera di sistema (il QR contiene l'URL completo) o

@@ -10,6 +10,7 @@ const DB_ERRORS = {
   night_not_open: 'La serata non è ancora aperta (o è già finita): questo QR non è attivo adesso.',
   qr_not_yet_active: 'Questo ingresso non è ancora attivo. Riprova più tardi.',
   qr_expired: 'Questo ingresso non è più valido: cerca un altro QR nel locale.',
+  not_in_this_night: 'Non sei in questa serata, quindi non c\'è nulla da chiudere.',
 };
 
 function toSessionError(error, fallback) {
@@ -51,19 +52,29 @@ function shapeSession(row) {
   };
 }
 
-// Check-in con il token del QR. Se sei già in questa serata il server
-// aggiorna solo la posizione (cambio sala) senza far ripartire la sessione.
-export async function checkIn(token) {
+// Scansione di un QR. Il server decide cosa significa:
+//   'checked_in'  → sei entrato
+//   'moved'       → eri già dentro, hai cambiato sala (la sessione resta)
+//   'checked_out' → era un QR di uscita, sei uscito
+export async function scanQr(token) {
   if (!isValidToken(token)) {
     throw new SessionError('QR non valido. Controlla di aver inquadrato il codice giusto.');
   }
-  const { error } = await supabase.rpc('check_in', { p_qr_token: token.trim() });
+  const { data, error } = await supabase.rpc('check_in', { p_qr_token: token.trim() });
   if (error) {
     console.error('check_in fallita:', error);
-    throw toSessionError(error, 'Ingresso non riuscito. Riprova.');
+    throw toSessionError(error, 'Operazione non riuscita. Riprova.');
   }
-  // La RPC ritorna la riga grezza: rileggiamo con locale e serata allegati
-  return fetchMySession();
+
+  const action = data?.action ?? 'checked_in';
+  return {
+    action,
+    venueName: data?.venue_name ?? null,
+    nightTitle: data?.night_title ?? null,
+    roomLabel: data?.room_label ?? null,
+    // Dopo un'uscita non c'è più sessione da rileggere
+    session: action === 'checked_out' ? null : await fetchMySession(),
+  };
 }
 
 // La sessione attiva dell'utente, con locale e serata.

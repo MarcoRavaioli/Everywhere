@@ -402,6 +402,7 @@ const QR_BADGES = {
   expired: { label: 'Scaduto', cls: 'bg-secondary/60 text-muted-foreground/70' },
   waiting_night: { label: 'Attende la serata', cls: 'bg-secondary text-muted-foreground' },
   closed: { label: 'Serata conclusa', cls: 'bg-secondary/60 text-muted-foreground/70' },
+  exit: { label: '← Uscita', cls: 'bg-accent/15 text-accent' },
 };
 
 function StateBadge({ map, state }) {
@@ -570,7 +571,7 @@ function NightQrListScreen({ night, venue, stats, onBack, onChanged, onWrite }) 
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-  const [form, setForm] = useState({ label: '', startsAt: '', endsAt: '' });
+  const [form, setForm] = useState({ label: '', startsAt: '', endsAt: '', kind: 'entry' });
 
   const selected = night.qrCodes.find(q => q.id === selectedId);
   if (selected) {
@@ -592,10 +593,11 @@ function NightQrListScreen({ night, venue, stats, onBack, onChanged, onWrite }) 
     try {
       await createNightQr(night.id, {
         label: form.label.trim(),
-        startsAt: fromLocalInput(form.startsAt),
-        endsAt: fromLocalInput(form.endsAt),
+        startsAt: form.kind === 'exit' ? null : fromLocalInput(form.startsAt),
+        endsAt: form.kind === 'exit' ? null : fromLocalInput(form.endsAt),
+        kind: form.kind,
       });
-      setForm({ label: '', startsAt: '', endsAt: '' });
+      setForm({ label: '', startsAt: '', endsAt: '', kind: 'entry' });
       setAdding(false);
       await onChanged();
     } catch (err) {
@@ -668,9 +670,11 @@ function NightQrListScreen({ night, venue, stats, onBack, onChanged, onWrite }) 
                 <div className="min-w-0">
                   <p className="text-sm font-bold text-foreground truncate">{qr.label}</p>
                   <p className="text-[11px] text-muted-foreground mt-0.5">
-                    {qr.startsAt || qr.endsAt
-                      ? `${fmt(qr.startsAt) ?? 'da subito'} → ${fmt(qr.endsAt) ?? 'fine serata'}`
-                      : 'Attivo per tutta la serata'}
+                    {qr.kind === 'exit'
+                      ? 'Chiude la sessione di chi lo inquadra'
+                      : qr.startsAt || qr.endsAt
+                        ? `${fmt(qr.startsAt) ?? 'da subito'} → ${fmt(qr.endsAt) ?? 'fine serata'}`
+                        : 'Attivo per tutta la serata'}
                   </p>
                   {here > 0 && (
                     <p className="text-[11px] text-primary mt-1">{here} {here === 1 ? 'persona' : 'persone'} da qui</p>
@@ -687,14 +691,16 @@ function NightQrListScreen({ night, venue, stats, onBack, onChanged, onWrite }) 
                   <QrCode className="w-3.5 h-3.5 mr-1.5" />
                   Mostra
                 </Button>
-                <Button
-                  onClick={() => onWrite?.(`qr:${qr.id}`)}
-                  variant="outline"
-                  className="flex-1 h-10 rounded-xl border-border/50 text-foreground text-xs"
-                >
-                  <MessageSquare className="w-3.5 h-3.5 mr-1.5" />
-                  Scrivi
-                </Button>
+                {qr.kind !== 'exit' && (
+                  <Button
+                    onClick={() => onWrite?.(`qr:${qr.id}`)}
+                    variant="outline"
+                    className="flex-1 h-10 rounded-xl border-border/50 text-foreground text-xs"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5 mr-1.5" />
+                    Scrivi
+                  </Button>
+                )}
                 {night.qrCodes.length > 1 && (
                   <Button
                     onClick={() => handleDelete(qr.id)}
@@ -714,21 +720,52 @@ function NightQrListScreen({ night, venue, stats, onBack, onChanged, onWrite }) 
       {adding ? (
         <div className="glass rounded-2xl p-4 space-y-3">
           <label className="text-xs text-muted-foreground uppercase tracking-wider block">Nuovo QR</label>
+
+          <div className="flex gap-2">
+            {[
+              { id: 'entry', label: 'Ingresso' },
+              { id: 'exit', label: 'Uscita' },
+            ].map(k => (
+              <button
+                key={k.id}
+                onClick={() => setForm(f => ({ ...f, kind: k.id }))}
+                className={`flex-1 h-10 rounded-xl text-xs font-medium border transition-all ${
+                  form.kind === k.id
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-secondary text-secondary-foreground border-border/50'
+                }`}
+              >
+                {k.label}
+              </button>
+            ))}
+          </div>
+
           <Input
             value={form.label}
             onChange={e => setForm(f => ({ ...f, label: e.target.value }))}
             maxLength={60}
-            placeholder="Es. Sala rossa, Terrazza, Privé"
+            placeholder={form.kind === 'exit' ? 'Es. Uscita, Guardaroba' : 'Es. Sala rossa, Terrazza, Privé'}
             className="h-12 bg-secondary border-border/50 rounded-xl text-foreground placeholder:text-muted-foreground/50"
           />
-          <TimeWindowFields
-            startsAt={form.startsAt}
-            endsAt={form.endsAt}
-            onChange={({ startsAt, endsAt }) => setForm(f => ({ ...f, startsAt, endsAt }))}
-          />
-          <p className="text-[10px] text-muted-foreground/60">
-            Lascia vuoto per un QR attivo da subito e per tutta la serata.
-          </p>
+
+          {form.kind === 'entry' ? (
+            <>
+              <TimeWindowFields
+                startsAt={form.startsAt}
+                endsAt={form.endsAt}
+                onChange={({ startsAt, endsAt }) => setForm(f => ({ ...f, startsAt, endsAt }))}
+              />
+              <p className="text-[10px] text-muted-foreground/60">
+                Lascia vuoto per un QR attivo da subito e per tutta la serata.
+              </p>
+            </>
+          ) : (
+            <p className="text-[10px] text-muted-foreground/60 leading-relaxed">
+              Chi lo inquadra esce dalla serata e smette di essere visibile.
+              Funziona sempre, anche fuori orario: uscire dev'essere possibile
+              in qualsiasi momento.
+            </p>
+          )}
           <div className="flex gap-2">
             <Button onClick={() => setAdding(false)} variant="outline" className="flex-1 h-11 rounded-xl border-border/50 text-foreground text-xs">
               Annulla
@@ -1034,14 +1071,16 @@ function ActiveNightCard({ night, stats, onShowQr, onWrite, onOpenNight, onClose
                   <QrCode className="w-3.5 h-3.5 mr-1.5" />
                   QR
                 </Button>
-                <Button
-                  onClick={() => onWrite(`qr:${qr.id}`)}
-                  variant="outline"
-                  className="flex-1 h-9 rounded-lg border-border/50 text-foreground text-xs"
-                >
-                  <MessageSquare className="w-3.5 h-3.5 mr-1.5" />
-                  Scrivi
-                </Button>
+                {qr.kind !== 'exit' && (
+                  <Button
+                    onClick={() => onWrite(`qr:${qr.id}`)}
+                    variant="outline"
+                    className="flex-1 h-9 rounded-lg border-border/50 text-foreground text-xs"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5 mr-1.5" />
+                    Scrivi
+                  </Button>
+                )}
               </div>
             </div>
           );

@@ -23,7 +23,8 @@ const DB_ERRORS = {
   qr_label_required: 'Dai un nome al QR (es. "Sala principale").',
   qr_label_too_long: 'Il nome del QR è troppo lungo.',
   invalid_time_window: 'L\'orario di fine deve essere successivo a quello di inizio.',
-  last_qr_of_night: 'Non puoi eliminare l\'unico QR della serata.',
+  last_qr_of_night: 'Non puoi eliminare l\'unico QR di ingresso della serata.',
+  invalid_qr_kind: 'Tipo di QR non valido.',
 };
 
 function toVenueError(error, fallback) {
@@ -142,6 +143,7 @@ export function nightState(night) {
 
 // Un QR è utilizzabile solo se la serata è attiva E siamo nella sua finestra
 export function qrState(qr, night) {
+  if (qr.kind === 'exit') return 'exit';
   const nState = nightState(night);
   if (nState !== 'open') return nState === 'closed' ? 'closed' : 'waiting_night';
   const now = Date.now();
@@ -157,6 +159,7 @@ function rowToQr(row) {
     token: row.token,
     startsAt: row.starts_at,
     endsAt: row.ends_at,
+    kind: row.kind ?? 'entry',
     createdAt: row.created_at,
   };
 }
@@ -234,12 +237,16 @@ export async function closeNight(nightId) {
   return data;
 }
 
-export async function createNightQr(nightId, { label, startsAt, endsAt } = {}) {
+// kind: 'entry' (default) o 'exit'. Un QR di uscita chiude la sessione
+// di chi lo inquadra, senza vincoli di orario: uscire dev'essere sempre
+// possibile.
+export async function createNightQr(nightId, { label, startsAt, endsAt, kind } = {}) {
   const { data, error } = await supabase.rpc('create_night_qr', {
     p_night: nightId,
     p_label: label,
     p_starts_at: startsAt ?? null,
     p_ends_at: endsAt ?? null,
+    p_kind: kind ?? 'entry',
   });
   if (error) {
     console.error('create_night_qr fallita:', error);

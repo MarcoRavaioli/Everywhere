@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Camera, LogOut, Shield, Eye, Bell, Pencil, Check, X, Menu, Store, ChevronRight, ArrowLeft, Ban } from 'lucide-react';
+import { Camera, LogOut, Shield, Eye, Bell, Pencil, Check, X, Menu, Store, ChevronRight, ArrowLeft, Ban, DoorOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -253,6 +253,7 @@ export default function Profile() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [blockedOpen, setBlockedOpen] = useState(false);
+  const [leaving, setLeaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [photoError, setPhotoError] = useState(null);
   const fileInputRef = useRef(null);
@@ -271,6 +272,19 @@ export default function Profile() {
       );
     } finally {
       setUploading(false);
+    }
+  };
+
+  // Uscire dal locale ≠ uscire dall'account: prima l'unico modo per
+  // smettere di essere visibili era fare logout.
+  const handleLeaveVenue = async () => {
+    if (leaving) return;
+    setLeaving(true);
+    try {
+      await endSession();
+      navigate('/home', { replace: true });
+    } finally {
+      setLeaving(false);
     }
   };
 
@@ -399,6 +413,24 @@ export default function Profile() {
           <SettingsItem icon={Shield} label="Privacy" />
           <SettingsItem icon={Ban} label="Persone bloccate" onClick={() => setBlockedOpen(true)} />
         </div>
+
+        {isInSession && (
+          <button
+            onClick={handleLeaveVenue}
+            disabled={leaving}
+            className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl glass border border-border/50 hover:bg-white/5 transition-colors mb-2 disabled:opacity-50"
+          >
+            <DoorOpen className="w-4 h-4 text-foreground" />
+            <div className="text-left flex-1">
+              <p className="text-sm text-foreground font-medium">
+                {leaving ? 'Uscita in corso…' : 'Esci dalla serata'}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                Smetti di essere visibile · resti nel tuo account
+              </p>
+            </div>
+          </button>
+        )}
 
         {/* Logout */}
         <button
