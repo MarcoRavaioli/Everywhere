@@ -7,6 +7,11 @@ tecnico noto e decisioni prese. Si aggiorna a ogni tappa.
 tester critico; chi implementa dichiara sempre *cosa ha verificato* e *cosa
 resta da verificare*, senza dare per riuscito ciò che non ha provato.
 
+> ⚠️ **Stato reale:** il codice è molto più avanti dei test. Quasi nulla di
+> quanto costruito è stato validato su dati veri. La procedura completa,
+> con passi e risultati attesi, è in **[TESTING.md](TESTING.md)**: è la cosa
+> più utile da fare adesso, prima di aggiungere altre funzioni.
+
 ---
 
 ## 1. Cos'è EveryWhere
@@ -111,6 +116,61 @@ come reali (vedi l'avviso sulla schermata Insight).
       limitato a poche email/ora)
 - [ ] **prod:** riattivarla + SMTP proprio (Resend/Postmark/SES): il mailer
       integrato di Supabase non è per la produzione
+
+---
+
+## 3-bis. Cosa è rimasto in sospeso
+
+Tutto ciò che è stato consapevolmente rimandato, in un unico posto.
+"Quando serve" indica il momento oltre il quale diventa un problema.
+
+### Pagamenti — l'intero Step 6 non esiste
+
+È il pezzo più grande rimandato, e da lì viene il ricavo.
+
+| Cosa manca | Nota | Quando serve |
+|---|---|---|
+| Incasso serate (singola e abbonamento) | `venues.plan` è salvato ma non fattura nulla | Prima di vendere a un locale vero |
+| Controllo pagamento all'apertura serata | `open_night` **non** verifica `payment_status`: disattivato apposta, altrimenti nulla sarebbe testabile senza Stripe. Il punto esatto è già commentato nel codice | Con Stripe |
+| Drink | Flusso disattivato con badge "Presto"; prima chiedeva dati di carta senza incassare | Quando decidi se incassa la piattaforma o il locale |
+| Webhook Stripe | Gli stati di pagamento devono cambiare **solo** server-side | Con Stripe |
+| Stripe Connect | Serve solo se i drink li incassa il locale | Dipende dalla decisione aperta |
+
+### Blocchi alla beta pubblica 🔴
+
+| Cosa manca | Perché blocca |
+|---|---|
+| **Recupero password** | Chi perde la password resta fuori per sempre. Farlo a metà (link che non porta da nessuna parte) sarebbe peggio che non averlo |
+| **Cancellazione account** | Obbligo GDPR: deve eliminare righe **e** foto |
+| **Privacy policy e termini** | L'app tratta posizione, foto e chat |
+| **SMTP proprio** | Il mailer integrato di Supabase è limitato a poche email/ora: gli utenti veri non riceverebbero le conferme |
+| **Conferma email in produzione** | Oggi va tenuta spenta in dev; in prod è obbligatoria |
+| **Sentry** | Senza, gli errori degli utenti sono invisibili |
+| **Backup verificati** | Non basta che siano attivi: va provato un restore |
+
+### Funzioni incomplete
+
+| Cosa | Stato |
+|---|---|
+| Scanner con fotocamera | Si incolla il codice, o si inquadra il QR con la fotocamera di sistema (funziona, il QR contiene l'URL) |
+| Locali vicini | `venues.location` è sempre vuoto: serve il geocoding, altrimenti `venues_nearby()` non restituisce mai nulla |
+| Insight dashboard | Dati dimostrativi, dichiarati in pagina |
+| Logo e copertina del locale | Campi URL liberi, mai salvati: vanno sostituiti da upload su Storage |
+| P.IVA e referente | Non persistiti: identità di fatturazione, arriva con Stripe |
+| Coda di moderazione | Le segnalazioni si leggono dal dashboard Supabase; manca un ruolo staff |
+| Paginazione | Chat, serate e ricordi caricano tutto: da paginare quando cresceranno |
+
+### Qualità e infrastruttura
+
+| Cosa | Stato |
+|---|---|
+| **Test automatici** | Zero. Da iniziare dalla logica pura: `nightState`, `qrState`, validazione token, mappatura errori |
+| **CI** | Nessuna: lint, build e test dovrebbero girare a ogni push |
+| Errori di lint | 12 aperti (import inutilizzati, eredità della demo) |
+| Bundle | 1,14 MB in un chunk unico: manca il code splitting |
+| N+1 dashboard serate | `fetchNightStats` viene chiamata una volta per serata |
+| Deploy | Niente è ancora online: Cloudflare Pages, progetto Supabase di produzione, dominio |
+| App native | Capacitor e push: Step 5 |
 
 ---
 

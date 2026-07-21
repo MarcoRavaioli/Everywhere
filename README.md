@@ -6,7 +6,11 @@ Include un lato business per i locali (dashboard, messaggi/promo, QR di check-in
 
 **Stack:** React + Vite + Tailwind + shadcn/ui · Supabase (Postgres, Auth, Realtime, Storage) · Cloudflare Pages
 
-Stato del progetto e prossimi passi: vedi [ROADMAP.md](ROADMAP.md).
+Stato del progetto, cose in sospeso e prossimi passi: [ROADMAP.md](ROADMAP.md).
+Come provare che tutto funzioni davvero: [TESTING.md](TESTING.md).
+
+> Il codice è più avanti dei test: quasi nulla è stato ancora validato su
+> dati veri. Prima di aggiungere funzioni, conviene eseguire la guida.
 
 ## Sviluppo locale
 
