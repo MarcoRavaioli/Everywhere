@@ -7,6 +7,7 @@ import {
   fetchPeopleInMyNight, fetchNightHeadcount, fetchMyEvs, fetchMyMatches,
   sendEv as sendEvApi, ignoreEv as ignoreEvApi,
 } from '@/api/people';
+import { fetchMessagesByPerson, sendMessage as sendMessageApi, rowToMessage, ChatError } from '@/api/chat';
 import { supabase } from '@/lib/supabaseClient';
 
 const AppContext = createContext(null);
@@ -54,6 +55,7 @@ export function AppProvider({ children }) {
   const [matchedEVs, setMatchedEVs] = useState([]);   // id delle persone con cui ho un match
   const [evNotes, setEvNotes] = useState({});         // personId -> nota
   const evIdByPerson = useRef({});                    // personId -> id dell'EV ricevuto
+  const matchIdByPerson = useRef({});                 // personId -> id del match (per la chat)
   const [memories] = useState(MOCK_MEMORIES);
   const [events] = useState(MOCK_EVENTS);
   const [venueMessages] = useState(MOCK_VENUE_MESSAGES);
@@ -268,15 +270,37 @@ export function AppProvider({ children }) {
       ]);
       const matchedIds = matches.map(m => m.personId);
       evIdByPerson.current = Object.fromEntries(received.map(r => [r.personId, r.id]));
+      matchIdByPerson.current = Object.fromEntries(matches.map(m => [m.personId, m.id]));
       setSentEVs(sent);
       // Chi è già diventato match esce dalla lista "ricevuti"
       setReceivedEVs(received.map(r => r.personId).filter(id => !matchedIds.includes(id)));
       setMatchedEVs(matchedIds);
       setEvNotes(notes);
+
+      // I messaggi arrivano in una sola query per tutti i match
+      if (matches.length > 0) {
+        try {
+          setActiveChats(await fetchMessagesByPerson(matches));
+        } catch (err) {
+          console.error('Caricamento messaggi fallito:', err);
+        }
+      } else {
+        setActiveChats({});
+      }
     } catch (err) {
       console.error('Caricamento EV fallito:', err);
     }
   }, [session?.nightId]);
+
+  // Aggiunge un messaggio evitando i doppioni: lo stesso messaggio arriva
+  // sia dalla risposta dell'insert sia dall'evento Realtime.
+  const appendMessage = useCallback((personId, msg) => {
+    setActiveChats(prev => {
+      const list = prev[personId] ?? [];
+      if (list.some(m => m.id === msg.id)) return prev;
+      return { ...prev, [personId]: [...list, msg] };
+    });
+  }, []);
 
   // Caricamento iniziale quando si entra in una serata
   useEffect(() => {
@@ -310,10 +334,27 @@ export function AppProvider({ children }) {
         { event: '*', schema: 'public', table: 'matches' },
         () => refreshEvs()
       )
+      // La RLS lascia passare solo i messaggi dei match di cui faccio
+      // parte: non serve (e non si potrebbe) filtrare per match qui.
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages' },
+        (payload) => {
+          const row = payload.new;
+          const personId = Object.keys(matchIdByPerson.current)
+            .find(pid => matchIdByPerson.current[pid] === row.match_id);
+          if (!personId) {
+            // Match appena creato e non ancora in mappa: ricarica
+            refreshEvs();
+            return;
+          }
+          appendMessage(personId, rowToMessage(row, authUser.id, personId));
+        }
+      )
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [session?.nightId, authUser?.id, refreshPeople, refreshEvs]);
+  }, [session?.nightId, authUser?.id, refreshPeople, refreshEvs, appendMessage]);
 
   // Invia un EV. Ritorna { matched } perché la UI possa festeggiare.
   const sendEV = useCallback(async (personId, note = null) => {
@@ -342,28 +383,16 @@ export function AppProvider({ children }) {
     }
   }, [refreshEvs]);
 
-  const sendChatMessage = useCallback((personId, text) => {
-    const msg = { id: Date.now(), from: 'me', text, time: new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) };
-    setActiveChats(prev => ({
-      ...prev,
-      [personId]: [...(prev[personId] || []), msg],
-    }));
-    // Simulate reply
-    setTimeout(() => {
-      const replies = [
-        'Ottimo! Ci vediamo di là 😊',
-        'Sì, sono vicino al bar!',
-        'Ti riconosco, hai la felpa nera?',
-        'Aspettami 5 minuti sul dancefloor',
-        '🔥',
-      ];
-      const reply = { id: Date.now() + 1, from: personId, text: replies[Math.floor(Math.random() * replies.length)], time: new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) };
-      setActiveChats(prev => ({
-        ...prev,
-        [personId]: [...(prev[personId] || []), reply],
-      }));
-    }, 1800);
-  }, []);
+  // Invio reale: il messaggio compare solo quando il server lo accetta.
+  // Lancia ChatError con messaggio leggibile in caso di fallimento.
+  const sendChatMessage = useCallback(async (personId, text) => {
+    const matchId = matchIdByPerson.current[personId];
+    if (!matchId) {
+      throw new ChatError('Chat non disponibile: il match non risulta più attivo.');
+    }
+    const row = await sendMessageApi(matchId, text);
+    appendMessage(personId, rowToMessage(row, authUser?.id, personId));
+  }, [authUser?.id, appendMessage]);
 
   const sendDrink = useCallback((fromPersonId, toPerson) => {
     const notification = {

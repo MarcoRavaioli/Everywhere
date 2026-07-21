@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Send, MessageCircle, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useApp } from '@/context/AppContext';
+import { DEFAULT_AVATAR } from '@/api/avatars';
 
 function TabBar({ active, onChange }) {
   const tabs = ['Inviati', 'Ricevuti', 'Condivisi'];
@@ -32,7 +33,12 @@ function EVSentCard({ person }) {
     >
       <div className="flex items-center gap-3">
         <div className="w-11 h-11 rounded-full overflow-hidden border border-border/50 flex-shrink-0">
-          <img src={person.photo} alt={person.name} className="w-full h-full object-cover" />
+            <img
+            src={person.photo || DEFAULT_AVATAR}
+            alt={person.name}
+            className="w-full h-full object-cover"
+            onError={(e) => { e.currentTarget.src = DEFAULT_AVATAR; }}
+          />
         </div>
         <div className="flex-1 min-w-0">
           <h3 className="text-sm font-semibold text-foreground">{person.name}, {person.age}</h3>
@@ -64,7 +70,12 @@ function EVReceivedCard({ person, note, onSendBack, onIgnore }) {
             onClick={() => note && setNoteExpanded(v => !v)}
             className={`w-14 h-14 rounded-full overflow-hidden border ${noteExpanded ? 'border-primary/60' : 'border-primary/30'} block`}
           >
-            <img src={person.photo} alt={person.name} className="w-full h-full object-cover" />
+              <img
+            src={person.photo || DEFAULT_AVATAR}
+            alt={person.name}
+            className="w-full h-full object-cover"
+            onError={(e) => { e.currentTarget.src = DEFAULT_AVATAR; }}
+          />
           </button>
           {note && (
             <button
@@ -134,7 +145,12 @@ function EVMatchCard({ person, onOpenChat }) {
       <div className="flex items-center gap-3">
         <div className="relative flex-shrink-0">
           <div className="w-13 h-13 rounded-full overflow-hidden border-2 border-primary/50">
-            <img src={person.photo} alt={person.name} className="w-12 h-12 rounded-full object-cover" />
+            <img
+              src={person.photo || DEFAULT_AVATAR}
+              alt={person.name}
+              className="w-12 h-12 rounded-full object-cover"
+              onError={(e) => { e.currentTarget.src = DEFAULT_AVATAR; }}
+            />
           </div>
           <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-primary flex items-center justify-center">
             <div className="w-1.5 h-1.5 rounded-full bg-white" />
@@ -157,8 +173,10 @@ function EVMatchCard({ person, onOpenChat }) {
 }
 
 function ChatModal({ person, onClose }) {
-  const { activeChats, sendChatMessage, sessionTimeLeft, formatTime } = useApp();
+  const { activeChats, sendChatMessage } = useApp();
   const [input, setInput] = useState('');
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState(null);
   const messages = activeChats[person.id] || [];
   const messagesEndRef = React.useRef(null);
 
@@ -166,11 +184,21 @@ function ChatModal({ person, onClose }) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSend = () => {
+  // Il testo resta nel campo se l'invio fallisce: riscriverlo sarebbe
+  // il modo più veloce per far odiare la chat.
+  const handleSend = async () => {
     const trimmed = input.trim();
-    if (!trimmed) return;
-    sendChatMessage(person.id, trimmed);
-    setInput('');
+    if (!trimmed || sending) return;
+    setSending(true);
+    setError(null);
+    try {
+      await sendChatMessage(person.id, trimmed);
+      setInput('');
+    } catch (err) {
+      setError(err?.message ?? 'Messaggio non inviato. Riprova.');
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -186,18 +214,23 @@ function ChatModal({ person, onClose }) {
           <X className="w-4 h-4 text-muted-foreground" />
         </button>
         <div className="w-9 h-9 rounded-full overflow-hidden border border-primary/30 flex-shrink-0">
-          <img src={person.photo} alt={person.name} className="w-full h-full object-cover" />
+            <img
+            src={person.photo || DEFAULT_AVATAR}
+            alt={person.name}
+            className="w-full h-full object-cover"
+            onError={(e) => { e.currentTarget.src = DEFAULT_AVATAR; }}
+          />
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-foreground">{person.name}</p>
-          <p className="text-[10px] text-primary">Chat attiva · scade in {formatTime(sessionTimeLeft)}</p>
+          <p className="text-[10px] text-primary">Match · potete scrivervi</p>
         </div>
       </div>
 
-      {/* Warning */}
+      {/* La conversazione resta legata al match, anche a serata finita */}
       <div className="px-4 py-2 bg-primary/5 border-b border-primary/10">
         <p className="text-[10px] text-muted-foreground text-center">
-          Questa chat è temporanea e scade con la sessione. Non sarà accessibile dopo.
+          La conversazione resta disponibile finché il match esiste.
         </p>
       </div>
 
@@ -227,6 +260,9 @@ function ChatModal({ person, onClose }) {
       </div>
 
       {/* Input */}
+      {error && (
+        <p className="px-4 pb-1 text-[11px] text-destructive text-center">{error}</p>
+      )}
       <div className="glass-strong px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] flex gap-2">
         <input
           value={input}
@@ -237,7 +273,8 @@ function ChatModal({ person, onClose }) {
         />
         <button
           onClick={handleSend}
-          className="w-11 h-11 rounded-xl bg-primary flex items-center justify-center glow-pink flex-shrink-0"
+          disabled={sending || !input.trim()}
+          className="w-11 h-11 rounded-xl bg-primary flex items-center justify-center glow-pink flex-shrink-0 disabled:opacity-50"
         >
           <Send className="w-4 h-4 text-primary-foreground" />
         </button>

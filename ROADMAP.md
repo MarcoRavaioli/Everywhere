@@ -148,10 +148,20 @@ come reali (vedi l'avviso sulla schermata Insight).
       dalla serata non vede nessuno; chi è in un'altra sala si vede comunque;
       il limite anti-spam scatta al 21° EV in un minuto
 
-**3f — Chat reale**
-- [ ] Chat su `messages` + Realtime, solo dentro un match
-- [ ] **Test (2 account):** messaggi live nei due sensi; un estraneo non li
-      legge nemmeno via API; la chat sopravvive al reload
+**✅ 3f — Chat reale** (implementato, da testare)
+- [x] Chat su `messages` + Realtime, solo dentro un match; una sola query
+      carica i messaggi di tutti i match
+- [x] Invio reale: il messaggio compare solo se il server lo accetta, e il
+      testo resta nel campo se l'invio fallisce
+- [x] Deduplica: lo stesso messaggio arriva sia dall'insert sia dal Realtime
+- [x] Validazione lato client (vuoto, soli spazi, oltre 2000 caratteri)
+- [x] **Corretta una frase falsa nella UI:** diceva "questa chat è temporanea
+      e scade con la sessione, non sarà accessibile dopo", ma i messaggi
+      restano legati al match. Ora dichiara il comportamento vero
+      (v. decisione aperta sulla durata delle conversazioni)
+- [ ] **Test (2 account):** messaggi live nei due sensi senza refresh; la
+      chat sopravvive al reload; un estraneo non li legge nemmeno via API
+- [ ] Paginazione dei messaggi quando le conversazioni si allungano
 
 **3g — Locale, comunicazioni, memories**
 - [ ] Pagina Locale: `venue_messages` reali della serata in corso
@@ -320,6 +330,12 @@ Cose consapevolmente lasciate indietro, con il perché.
 - **Prezzi**: quanto costano serata singola e abbonamento.
 - **Verifica dell'età**: solo dichiarata o verificata davvero? Cambia molto
   sul piano legale per un'app con incontri.
+- **Durata delle conversazioni** *(emersa in 3f)*: la UI prometteva chat
+  effimere che scadevano con la serata, ma i messaggi restano legati al
+  match. Ho allineato il testo alla realtà, ma la scelta di prodotto è
+  aperta: chat permanenti con i match (come ora), oppure effimere davvero
+  (con cancellazione a fine serata). Cambia la promessa di privacy fatta
+  all'utente, quindi va decisa prima della beta.
 - **Conservazione dati**: per quanto restano chat, sessioni e memories.
 - **Nome e dominio**: ancora da scegliere.
 
