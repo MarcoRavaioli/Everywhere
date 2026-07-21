@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, MoreHorizontal, Send } from 'lucide-react';
 import InterestChip from '@/components/everywhere/InterestChip';
 import { useApp } from '@/context/AppContext';
+import ReportBlockSheet from '@/components/everywhere/ReportBlockSheet';
 import { DEFAULT_AVATAR } from '@/api/avatars';
 
 const MAX_NOTE = 280;
@@ -11,10 +12,19 @@ const MAX_NOTE = 280;
 export default function PersonDetail() {
   const { personId } = useParams();
   const navigate = useNavigate();
-  const { people, sentEVs, sendEV } = useApp();
+  const { people, sentEVs, sendEV, refreshPeople, refreshMemories } = useApp();
   const [showSentConfirm, setShowSentConfirm] = useState(false);
   const [sending, setSending] = useState(false);
   const [evError, setEvError] = useState(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
+
+  // Dopo blocco o segnalazione la persona non è più visibile:
+  // si ricaricano le liste e si esce dalla sua scheda.
+  const handleModerationDone = async () => {
+    setSheetOpen(false);
+    await Promise.all([refreshPeople(), refreshMemories()]);
+    navigate('/session', { replace: true });
+  };
   // 'idle' | 'expanded' | 'sent'
   const [evState, setEvState] = useState('idle');
   const [note, setNote] = useState('');
@@ -77,7 +87,11 @@ export default function PersonDetail() {
           >
             <X className="w-5 h-5 text-white" />
           </button>
-          <button className="w-10 h-10 rounded-full glass flex items-center justify-center">
+          <button
+            onClick={() => setSheetOpen(true)}
+            aria-label="Blocca o segnala"
+            className="w-10 h-10 rounded-full glass flex items-center justify-center"
+          >
             <MoreHorizontal className="w-5 h-5 text-white" />
           </button>
         </div>
@@ -185,6 +199,15 @@ export default function PersonDetail() {
               </p>
             </motion.div>
           </motion.div>
+        )}
+      </AnimatePresence>
+    <AnimatePresence>
+        {sheetOpen && (
+          <ReportBlockSheet
+            person={person}
+            onClose={() => setSheetOpen(false)}
+            onDone={handleModerationDone}
+          />
         )}
       </AnimatePresence>
     </div>

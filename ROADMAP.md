@@ -209,12 +209,25 @@ come reali (vedi l'avviso sulla schermata Insight).
 > contenuti inventati. Resta dimostrativa solo la pagina Insight della
 > dashboard, che però lo dichiara.
 
-**3h — Blocco e segnalazione** ← *obbligatorio per gli store*
-- [ ] Tabella `blocks` + `reports` con motivo
-- [ ] Chi blocco sparisce da liste, chat e match, in entrambe le direzioni
-- [ ] Coda di moderazione minima (anche solo una vista SQL per iniziare)
-- [ ] **Test:** blocco un utente → invisibile nei due sensi anche nella
-      stessa serata; segnalazione registrata
+**✅ 3h — Blocco e segnalazione** (implementato, da testare)
+- [x] Tabelle `blocks` e `reports` (6 motivi, dettagli facoltativi)
+- [x] Il blocco è **simmetrico negli effetti**: chi blocca e chi è bloccato
+      spariscono a vicenda da liste, profili, foto, match, chat ed EV —
+      applicato dentro `can_view_profile()`, quindi vale anche via API
+- [x] Un blocco **batte il match**: non basta nascondere la lista, si chiude
+      anche l'accesso al profilo e alla conversazione
+- [x] Non si può sapere di essere stati bloccati (`blocks` è leggibile solo
+      da chi ha creato il blocco): saperlo esporrebbe a ritorsioni
+- [x] Segnalare blocca automaticamente: chi segnala non resta esposto
+- [x] UI: pannello da "⋯" nella scheda persona; elenco "Persone bloccate"
+      nel profilo, con sblocco
+- [x] Scritture solo via RPC
+- [ ] **Coda di moderazione**: per ora si consulta dal dashboard Supabase
+      (`select * from reports where status = 'open'`). Serve un ruolo staff
+      prima di avere volumi veri
+- [ ] **Test (2 account):** blocco → sparisce da entrambe le liste anche
+      nella stessa serata; la chat non è più leggibile nemmeno via API;
+      segnalazione registrata in `reports`; sblocco dal profilo
 > Apple e Google **rifiutano** le app social/UGC senza blocco e segnalazione.
 
 **3i — Geocoding** (serve solo per "locali vicini")
@@ -277,9 +290,8 @@ Da completare **tutti** prima di aprire a persone che non conosci:
 
 ### Sicurezza
 
-- [ ] **Rate limiting applicativo**: oggi nulla impedisce di chiamare
-      `send_ev` in loop. Serve un limite per utente/serata (contatore in
-      tabella o vincolo nella RPC)
+- [x] **Rate limiting su `send_ev`**: 20 EV al minuto per utente (3e)
+- [ ] Valutare limiti anche su messaggi e segnalazioni
 - [ ] Verifica che un utente non possa entrare in due serate insieme
       (l'indice unico c'è, va testato)
 - [ ] Revisione periodica delle policy: ogni tabella nuova nasce con RLS

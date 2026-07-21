@@ -1,18 +1,19 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Camera, LogOut, Shield, Eye, Bell, Pencil, Check, X, Menu, Store, ChevronRight, ArrowLeft } from 'lucide-react';
+import { Camera, LogOut, Shield, Eye, Bell, Pencil, Check, X, Menu, Store, ChevronRight, ArrowLeft, Ban } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useApp, ALL_TOPICS } from '@/context/AppContext';
 import { useAuth } from '@/lib/AuthContext';
 import { DEFAULT_AVATAR, AvatarError } from '@/api/avatars';
+import { fetchBlockedUsers, unblockUser } from '@/api/moderation';
 import BottomNav from '@/components/everywhere/BottomNav';
 
-function SettingsItem({ icon: Icon, label, value }) {
+function SettingsItem({ icon: Icon, label, value, onClick }) {
   return (
-    <button className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl glass hover:bg-white/5 transition-colors">
+    <button onClick={onClick} className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl glass hover:bg-white/5 transition-colors">
       <Icon className="w-4 h-4 text-muted-foreground" />
       <span className="text-sm text-foreground flex-1 text-left">{label}</span>
       {value && <span className="text-xs text-muted-foreground">{value}</span>}
@@ -152,6 +153,98 @@ function EditProfileModal({ user, onSave, onClose }) {
   );
 }
 
+function BlockedUsersSheet({ onClose }) {
+  const [list, setList] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState(null);
+  const [error, setError] = useState(null);
+
+  const load = async () => {
+    setError(null);
+    try {
+      setList(await fetchBlockedUsers());
+    } catch (err) {
+      setError(err?.message ?? 'Caricamento non riuscito.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const handleUnblock = async (personId) => {
+    if (busyId) return;
+    setBusyId(personId);
+    setError(null);
+    try {
+      await unblockUser(personId);
+      await load();
+    } catch (err) {
+      setError(err?.message ?? 'Sblocco non riuscito.');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex flex-col bg-background"
+    >
+      <div className="glass-strong px-4 pt-6 pb-3 flex items-center gap-3">
+        <button onClick={onClose} className="w-9 h-9 rounded-full glass flex items-center justify-center">
+          <X className="w-4 h-4 text-muted-foreground" />
+        </button>
+        <h2 className="text-base font-bold text-foreground">Persone bloccate</h2>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-4 py-4">
+        {error && <p className="text-destructive text-sm text-center mb-3">{error}</p>}
+
+        {loading ? (
+          <div className="flex justify-center py-12">
+            <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+          </div>
+        ) : list.length === 0 ? (
+          <div className="text-center py-14 px-6">
+            <Ban className="w-9 h-9 text-muted-foreground/30 mx-auto mb-3" />
+            <p className="text-sm text-foreground font-medium">Nessuna persona bloccata</p>
+            <p className="text-xs text-muted-foreground mt-2 leading-relaxed max-w-[250px] mx-auto">
+              Chi blocchi finisce qui e puoi sbloccarlo quando vuoi.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {list.map(person => (
+              <div key={person.id} className="flex items-center gap-3 p-3 rounded-xl glass">
+                <div className="w-10 h-10 rounded-full overflow-hidden border border-border/50 flex-shrink-0">
+                  <img
+                    src={person.photo || DEFAULT_AVATAR}
+                    alt={person.name}
+                    className="w-full h-full object-cover"
+                    onError={(e) => { e.currentTarget.src = DEFAULT_AVATAR; }}
+                  />
+                </div>
+                <p className="text-sm text-foreground flex-1 min-w-0 truncate">{person.name}</p>
+                <Button
+                  onClick={() => handleUnblock(person.id)}
+                  disabled={busyId === person.id}
+                  variant="outline"
+                  className="h-9 px-4 rounded-xl border-border/50 text-foreground text-xs"
+                >
+                  {busyId === person.id ? '…' : 'Sblocca'}
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
 export default function Profile() {
   const navigate = useNavigate();
   const { currentUser, updateProfile, endSession, uploadAvatar, setCurrentUser, isInSession } = useApp();
@@ -159,6 +252,7 @@ export default function Profile() {
   const [editOpen, setEditOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [blockedOpen, setBlockedOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [photoError, setPhotoError] = useState(null);
   const fileInputRef = useRef(null);
@@ -303,6 +397,7 @@ export default function Profile() {
           <SettingsItem icon={Eye} label="Visibilità" value="Visibile" />
           <SettingsItem icon={Bell} label="Notifiche" value="Attive" />
           <SettingsItem icon={Shield} label="Privacy" />
+          <SettingsItem icon={Ban} label="Persone bloccate" onClick={() => setBlockedOpen(true)} />
         </div>
 
         {/* Logout */}
@@ -360,6 +455,10 @@ export default function Profile() {
             </motion.div>
           </>
         )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {blockedOpen && <BlockedUsersSheet onClose={() => setBlockedOpen(false)} />}
       </AnimatePresence>
 
       {/* La pagina vive anche fuori sessione: la nav in basso solo quando serve */}
