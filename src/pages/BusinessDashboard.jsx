@@ -14,7 +14,7 @@ import {
 import {
   fetchMyVenue, fetchVenueStats, fetchNights, fetchNightStats, createNight,
   openNight, closeNight, createNightQr, deleteNightQr, rotateNightQr,
-  nightState, qrState, checkInUrl, VenueError,
+  nightState, qrState, checkInUrl, isLocalOnlyOrigin, VenueError,
 } from '@/api/venues';
 import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
@@ -470,6 +470,19 @@ function QrDetailView({ qr, night, venue, onBack, onChanged }) {
         </div>
       )}
 
+      {isLocalOnlyOrigin() && (
+        <div className="flex items-start gap-2 px-4 py-3 rounded-xl bg-destructive/10 border border-destructive/30 text-left">
+          <AlertTriangle className="w-4 h-4 text-destructive flex-shrink-0 mt-0.5" />
+          <p className="text-[11px] text-muted-foreground leading-relaxed">
+            <strong className="text-foreground">Questo QR non funzionerà da altri dispositivi.</strong>{' '}
+            Contiene l'indirizzo <code>localhost</code>, che su un altro telefono
+            punta a sé stesso. Apri la dashboard dall'indirizzo di rete del
+            computer (es. <code>http://192.168.x.x:5173</code>) e rigenera questa
+            pagina prima di stampare o mostrare il codice.
+          </p>
+        </div>
+      )}
+
       <div className="qr-print-area glass rounded-2xl p-6 border border-primary/30">
         <div className={`bg-white p-4 rounded-xl inline-block ${state === 'active' ? '' : 'opacity-60'}`}>
           <QRCodeSVG value={url} size={192} level="M" />
@@ -596,6 +609,17 @@ function NightQrListScreen({ night, venue, stats, onBack, onChanged }) {
       </div>
 
       {error && <p className="text-destructive text-sm text-center">{error}</p>}
+
+      {isLocalOnlyOrigin() && (
+        <div className="flex items-start gap-2 px-4 py-3 rounded-xl bg-destructive/10 border border-destructive/30">
+          <AlertTriangle className="w-4 h-4 text-destructive flex-shrink-0 mt-0.5" />
+          <p className="text-[11px] text-muted-foreground leading-relaxed">
+            Stai usando <code>localhost</code>: i QR generati qui non si aprono
+            da altri dispositivi. Per una prova con più telefoni, apri la
+            dashboard dall'indirizzo di rete del computer.
+          </p>
+        </div>
+      )}
 
       <div className="space-y-2">
         {night.qrCodes.map(qr => {

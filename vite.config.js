@@ -4,6 +4,11 @@ import { defineConfig } from 'vite'
 
 // https://vite.dev/config/
 export default defineConfig({
+  // In ascolto anche sulla rete locale: serve per provare l'app dai
+  // telefoni (i QR di check-in vanno aperti da un altro dispositivo).
+  server: {
+    host: true,
+  },
   plugins: [
     react(),
   ],

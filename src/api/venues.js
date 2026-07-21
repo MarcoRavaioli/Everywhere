@@ -310,3 +310,10 @@ export async function fetchNightStats(nightId) {
 export function checkInUrl(token, origin = window.location.origin) {
   return `${origin}/checkin?t=${token}`;
 }
+
+// Un QR generato da localhost contiene "localhost": inquadrato da un
+// altro telefono punterebbe a quel telefono, non al server. In sviluppo
+// va aperta la dashboard dall'indirizzo di rete prima di stampare i QR.
+export function isLocalOnlyOrigin(origin = window.location.origin) {
+  return /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|$)/i.test(origin);
+}
