@@ -132,13 +132,13 @@ function InsightScreen() {
   );
 }
 
-function CommunicationsScreen({ venue }) {
+function CommunicationsScreen({ venue, initialTarget = '' }) {
   const [type, setType] = useState('promo');
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [pinned, setPinned] = useState(false);
   // '' = tutto il locale · 'night:<id>' = una serata · 'qr:<id>' = una sala
-  const [target, setTarget] = useState('');
+  const [target, setTarget] = useState(initialTarget);
   const [nights, setNights] = useState([]);
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -183,7 +183,7 @@ function CommunicationsScreen({ venue }) {
       setTitle('');
       setBody('');
       setPinned(false);
-      setTarget('');
+      setTarget(initialTarget);
       setSent(true);
       setTimeout(() => setSent(false), 3000);
       await load();
@@ -565,7 +565,7 @@ function QrDetailView({ qr, night, venue, onBack, onChanged }) {
 }
 
 // Elenco dei QR di una serata: uno generale + quelli per sala/zona
-function NightQrListScreen({ night, venue, stats, onBack, onChanged }) {
+function NightQrListScreen({ night, venue, stats, onBack, onChanged, onWrite }) {
   const [selectedId, setSelectedId] = useState(null);
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -625,13 +625,25 @@ function NightQrListScreen({ night, venue, stats, onBack, onChanged }) {
         ← Tutte le serate
       </button>
 
-      <div>
-        <h2 className="text-xl font-bold text-foreground">{night.title || 'Serata'}</h2>
-        <p className="text-xs text-muted-foreground mt-1">
-          Più QR per la stessa serata: ingresso, sale, zone. Chi entra da QR
-          diversi si vede comunque, è la stessa festa.
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-xl font-bold text-foreground truncate">{night.title || 'Serata'}</h2>
+          <p className="text-xs text-muted-foreground mt-1">
+            Più QR per la stessa serata: ingresso, sale, zone. Chi entra da QR
+            diversi si vede comunque, è la stessa festa.
+          </p>
+        </div>
       </div>
+
+      {/* Le comunicazioni appartengono alla serata: si scrive da qui */}
+      <Button
+        onClick={() => onWrite?.(`night:${night.id}`)}
+        variant="outline"
+        className="w-full h-11 rounded-xl border-primary/40 text-primary text-sm"
+      >
+        <MessageSquare className="w-4 h-4 mr-2" />
+        Scrivi a tutta la serata
+      </Button>
 
       {error && <p className="text-destructive text-sm text-center">{error}</p>}
 
@@ -674,6 +686,14 @@ function NightQrListScreen({ night, venue, stats, onBack, onChanged }) {
                 >
                   <QrCode className="w-3.5 h-3.5 mr-1.5" />
                   Mostra
+                </Button>
+                <Button
+                  onClick={() => onWrite?.(`qr:${qr.id}`)}
+                  variant="outline"
+                  className="flex-1 h-10 rounded-xl border-border/50 text-foreground text-xs"
+                >
+                  <MessageSquare className="w-3.5 h-3.5 mr-1.5" />
+                  Scrivi
                 </Button>
                 {night.qrCodes.length > 1 && (
                   <Button
@@ -735,7 +755,7 @@ function NightQrListScreen({ night, venue, stats, onBack, onChanged }) {
   );
 }
 
-function NightsScreen({ venue, onPresenceChange }) {
+function NightsScreen({ venue, onPresenceChange, onWrite, initialNightId = null }) {
   const [nights, setNights] = useState([]);
   const [statsByNight, setStatsByNight] = useState({});
   const [loading, setLoading] = useState(true);
@@ -743,7 +763,7 @@ function NightsScreen({ venue, onPresenceChange }) {
   const [form, setForm] = useState({ title: '', opensAt: '', closesAt: '' });
   const [creating, setCreating] = useState(false);
   const [busyId, setBusyId] = useState(null);
-  const [openedNightId, setOpenedNightId] = useState(null);
+  const [openedNightId, setOpenedNightId] = useState(initialNightId);
   const [confirmCloseId, setConfirmCloseId] = useState(null);
 
   const load = useCallback(async () => {
@@ -808,6 +828,7 @@ function NightsScreen({ venue, onPresenceChange }) {
         stats={statsByNight[openedNight.id] ?? { byQr: {} }}
         onBack={() => setOpenedNightId(null)}
         onChanged={load}
+        onWrite={onWrite}
       />
     );
   }
@@ -950,6 +971,116 @@ function NightsScreen({ venue, onPresenceChange }) {
 }
 
 // ─── Main Dashboard ──────────────────────────────────────────────────────────
+// Serata in corso (o la prossima programmata) mostrata già aperta nella
+// home del locale: durante una serata vera non c'è tempo di navigare.
+function ActiveNightCard({ night, stats, onShowQr, onWrite, onOpenNight, onCloseNight, busy }) {
+  const state = nightState(night);
+  const isOpen = state === 'open';
+
+  return (
+    <div className="glass rounded-2xl overflow-hidden border border-primary/30">
+      <div className="p-4 pb-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-widest">
+              {isOpen ? 'Serata in corso' : 'Prossima serata'}
+            </p>
+            <h2 className="text-base font-bold text-foreground truncate mt-0.5">
+              {night.title || 'Serata senza nome'}
+            </h2>
+            {isOpen ? (
+              <p className="text-[11px] text-primary mt-0.5">
+                {stats.activeNow === 1 ? '1 persona presente' : `${stats.activeNow} persone presenti`}
+              </p>
+            ) : (
+              night.opensAt && (
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Apre alle {fmt(night.opensAt)}
+                </p>
+              )
+            )}
+          </div>
+          <StateBadge map={NIGHT_BADGES} state={state} />
+        </div>
+      </div>
+
+      {/* Sale: stato, presenze e azioni senza cambiare schermata */}
+      <div className="px-4 pb-3 space-y-1.5">
+        <p className="text-[10px] text-muted-foreground uppercase tracking-widest mb-1">
+          Sale · {night.qrCodes.length} QR
+        </p>
+        {night.qrCodes.map(qr => {
+          const qs = qrState(qr, night);
+          const here = stats.byQr?.[qr.id] ?? 0;
+          return (
+            <div key={qr.id} className="rounded-xl bg-secondary/40 p-3">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <div className="min-w-0">
+                  <p className="text-sm text-foreground truncate">{qr.label}</p>
+                  {here > 0 && (
+                    <p className="text-[11px] text-primary mt-0.5">
+                      {here === 1 ? '1 persona qui' : `${here} persone qui`}
+                    </p>
+                  )}
+                </div>
+                <StateBadge map={QR_BADGES} state={qs} />
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => onShowQr(night.id)}
+                  variant="outline"
+                  className="flex-1 h-9 rounded-lg border-border/50 text-foreground text-xs"
+                >
+                  <QrCode className="w-3.5 h-3.5 mr-1.5" />
+                  QR
+                </Button>
+                <Button
+                  onClick={() => onWrite(`qr:${qr.id}`)}
+                  variant="outline"
+                  className="flex-1 h-9 rounded-lg border-border/50 text-foreground text-xs"
+                >
+                  <MessageSquare className="w-3.5 h-3.5 mr-1.5" />
+                  Scrivi
+                </Button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="px-4 pb-4 flex gap-2">
+        <Button
+          onClick={() => onWrite(`night:${night.id}`)}
+          className="flex-1 h-10 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold glow-pink"
+        >
+          <MessageSquare className="w-3.5 h-3.5 mr-1.5" />
+          Scrivi a tutti
+        </Button>
+        {isOpen ? (
+          <Button
+            onClick={() => onCloseNight(night.id)}
+            disabled={busy}
+            variant="outline"
+            className="h-10 px-4 rounded-xl border-destructive/40 text-destructive text-xs"
+          >
+            {busy ? '…' : 'Chiudi'}
+          </Button>
+        ) : (
+          <Button
+            onClick={() => onOpenNight(night.id)}
+            disabled={busy}
+            variant="outline"
+            className="h-10 px-4 rounded-xl border-primary/40 text-primary text-xs"
+          >
+            <Play className="w-3.5 h-3.5 mr-1.5 fill-current" />
+            {busy ? '…' : 'Apri ora'}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function BusinessDashboard() {
   const navigate = useNavigate();
   const { business, setBusiness, setCurrentUser } = useApp();
@@ -959,7 +1090,11 @@ export default function BusinessDashboard() {
   const [loggingOut, setLoggingOut] = useState(false);
   const [venue, setVenue] = useState(null);
   const [stats, setStats] = useState({ activeNow: 0, totalSessions: 0, failed: false });
-  const [openNightTitle, setOpenNightTitle] = useState(null);
+  const [focusNight, setFocusNight] = useState(null);   // serata in corso o prossima
+  const [focusStats, setFocusStats] = useState({ activeNow: 0, byQr: {} });
+  const [commsTarget, setCommsTarget] = useState('');
+  const [initialNightId, setInitialNightId] = useState(null);
+  const [nightBusy, setNightBusy] = useState(false);
   const [loadingVenue, setLoadingVenue] = useState(true);
   const [venueError, setVenueError] = useState(null);
 
@@ -972,8 +1107,14 @@ export default function BusinessDashboard() {
       if (v) {
         const [s, nights] = await Promise.all([fetchVenueStats(v.id), fetchNights(v.id)]);
         setStats(s);
-        const open = nights.find(n => nightState(n) === 'open');
-        setOpenNightTitle(open ? (open.title || 'Serata senza nome') : null);
+        // In evidenza: la serata aperta, altrimenti la prossima programmata
+        const focus =
+          nights.find(n => nightState(n) === 'open') ??
+          nights.filter(n => nightState(n) === 'scheduled').sort(
+            (a, b) => new Date(a.opensAt) - new Date(b.opensAt)
+          )[0] ?? null;
+        setFocusNight(focus);
+        setFocusStats(focus ? await fetchNightStats(focus.id) : { activeNow: 0, byQr: {} });
       }
     } catch (err) {
       setVenueError(err instanceof VenueError ? err.message : 'Caricamento del locale non riuscito.');
@@ -983,6 +1124,22 @@ export default function BusinessDashboard() {
   }, []);
 
   useEffect(() => { loadVenue(); }, [loadVenue]);
+
+  const openComms = (target = '') => { setCommsTarget(target); setScreen('comms'); };
+  const openNightScreen = (nightId = null) => { setInitialNightId(nightId); setScreen('session'); };
+
+  const runOnNight = async (fn, nightId) => {
+    if (nightBusy) return;
+    setNightBusy(true);
+    try {
+      await fn(nightId);
+      await loadVenue();
+    } catch (err) {
+      setVenueError(err instanceof VenueError ? err.message : 'Operazione non riuscita.');
+    } finally {
+      setNightBusy(false);
+    }
+  };
 
   // Come nel profilo utente: chiude davvero la sessione Supabase
   const handleLogout = async () => {
@@ -1042,8 +1199,15 @@ export default function BusinessDashboard() {
         </div>
         <div className="flex-1 px-5 py-5 overflow-y-auto pb-16">
           {screen === 'insight' && <InsightScreen />}
-          {screen === 'comms' && <CommunicationsScreen venue={venue} />}
-          {screen === 'session' && <NightsScreen venue={venue} onPresenceChange={loadVenue} />}
+          {screen === 'comms' && <CommunicationsScreen venue={venue} initialTarget={commsTarget} />}
+          {screen === 'session' && (
+            <NightsScreen
+              venue={venue}
+              onPresenceChange={loadVenue}
+              onWrite={openComms}
+              initialNightId={initialNightId}
+            />
+          )}
         </div>
       </div>
     );
@@ -1082,15 +1246,27 @@ export default function BusinessDashboard() {
           </div>
         </div>
 
+        {focusNight && (
+          <ActiveNightCard
+            night={focusNight}
+            stats={focusStats}
+            busy={nightBusy}
+            onShowQr={openNightScreen}
+            onWrite={openComms}
+            onOpenNight={(id) => runOnNight(openNight, id)}
+            onCloseNight={(id) => runOnNight(closeNight, id)}
+          />
+        )}
+
         {/* Main actions */}
         <div className="grid grid-cols-2 gap-3">
           <ActionCard icon={BarChart2} label="Insight" sub="Analisi & dati" color="text-accent" bg="bg-accent/10" onClick={() => setScreen('insight')} />
-          <ActionCard icon={MessageSquare} label="Comunicazioni" sub="Messaggia il tuo pubblico" color="text-primary" bg="bg-primary/10" onClick={() => setScreen('comms')} />
+          <ActionCard icon={MessageSquare} label="Comunicazioni" sub="Messaggia il tuo pubblico" color="text-primary" bg="bg-primary/10" onClick={() => openComms('')} />
         </div>
 
         {/* Avvia sessione — full width CTA */}
         <button
-          onClick={() => setScreen('session')}
+          onClick={() => openNightScreen(null)}
           className="w-full glass rounded-2xl p-5 border border-primary/30 hover:border-primary/60 transition-all flex items-center justify-between group"
         >
           <div className="flex items-center gap-4">
@@ -1100,7 +1276,7 @@ export default function BusinessDashboard() {
             <div className="text-left">
               <p className="text-sm font-bold text-foreground">Serate</p>
               <p className="text-[11px] text-muted-foreground">
-                {openNightTitle ? `In corso: ${openNightTitle}` : 'Crea una serata e genera il QR'}
+                {focusNight ? 'Tutte le serate e i loro QR' : 'Crea una serata e genera il QR'}
               </p>
             </div>
           </div>
@@ -1147,8 +1323,8 @@ export default function BusinessDashboard() {
 
         {!stats.failed && stats.totalSessions === 0 && (
           <p className="text-[11px] text-muted-foreground/60 text-center leading-relaxed">
-            {openNightTitle
-              ? 'Serata aperta, nessun check-in ancora. Esponi il QR all\'ingresso.'
+            {focusNight
+              ? 'Nessun check-in ancora. Esponi il QR all\'ingresso.'
               : 'Nessun check-in finora. Crea una serata e aprila per far entrare le persone.'}
           </p>
         )}
