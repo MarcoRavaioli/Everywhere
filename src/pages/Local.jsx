@@ -1,11 +1,20 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Megaphone, Tag, GlassWater, X, CreditCard, CheckCircle } from 'lucide-react';
+import { Megaphone, Tag, GlassWater, X, CreditCard, CheckCircle, Music, CalendarDays } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useApp } from '@/context/AppContext';
 
+const MESSAGE_STYLES = {
+  promo:  { label: 'Promozione', icon: Tag,       highlight: true },
+  lineup: { label: 'Lineup',     icon: Music,     highlight: false },
+  event:  { label: 'Evento',     icon: CalendarDays, highlight: false },
+  info:   { label: null,         icon: Megaphone, highlight: false },
+};
+
 function VenueMessageCard({ msg, index }) {
-  const isPromo = msg.type === 'promo';
+  const style = MESSAGE_STYLES[msg.type] ?? MESSAGE_STYLES.info;
+  const Icon = style.icon;
+  const isPromo = style.highlight;
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }}
@@ -15,15 +24,12 @@ function VenueMessageCard({ msg, index }) {
     >
       <div className="flex items-start gap-3">
         <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${isPromo ? 'bg-primary/20' : 'bg-secondary'}`}>
-          {isPromo
-            ? <Tag className="w-4 h-4 text-primary" />
-            : <Megaphone className="w-4 h-4 text-muted-foreground" />
-          }
+          <Icon className={`w-4 h-4 ${isPromo ? 'text-primary' : 'text-muted-foreground'}`} />
         </div>
         <div className="flex-1 min-w-0">
-          {isPromo && (
-            <span className="text-[10px] font-semibold text-primary uppercase tracking-widest mb-0.5 block">
-              Promozione
+          {style.label && (
+            <span className={`text-[10px] font-semibold uppercase tracking-widest mb-0.5 block ${isPromo ? 'text-primary' : 'text-muted-foreground/70'}`}>
+              {style.label}
             </span>
           )}
           <h3 className="text-sm font-semibold text-foreground">{msg.title}</h3>
@@ -216,6 +222,17 @@ export default function Locale() {
       {pinned.length > 0 && (
         <div className="mb-4">
           {pinned.map((msg, i) => <VenueMessageCard key={msg.id} msg={msg} index={i} />)}
+        </div>
+      )}
+
+      {venueMessages.length === 0 && (
+        <div className="text-center py-12 px-6">
+          <Megaphone className="w-9 h-9 text-muted-foreground/30 mx-auto mb-3" />
+          <p className="text-sm text-foreground font-medium">Nessuna comunicazione</p>
+          <p className="text-xs text-muted-foreground mt-2 leading-relaxed max-w-[260px] mx-auto">
+            Quando il locale pubblica promozioni o annunci, li vedrai qui
+            senza dover ricaricare.
+          </p>
         </div>
       )}
 

@@ -163,12 +163,25 @@ come reali (vedi l'avviso sulla schermata Insight).
       chat sopravvive al reload; un estraneo non li legge nemmeno via API
 - [ ] Paginazione dei messaggi quando le conversazioni si allungano
 
-**3g — Locale, comunicazioni, memories**
-- [ ] Pagina Locale: `venue_messages` reali della serata in corso
-- [ ] Dashboard: CRUD comunicazioni reale (oggi il form non salva nulla)
+**✅ 3g-1 — Comunicazioni del locale** (implementato, da testare)
+- [x] Pagina Locale: `venue_messages` reali + Realtime (compaiono senza
+      ricaricare) e stato vuoto al posto della schermata muta
+- [x] Dashboard: CRUD reale (prima il form diceva "inviata" senza salvare):
+      pubblica, metti/togli evidenza, elimina, con elenco delle pubblicate
+- [x] **Risolto D4:** i tipi ora combaciano (promo, lineup, info, event);
+      prima la UI ne offriva 4 e il DB ne accettava 2
+- [x] Messaggi indirizzabili a una serata specifica o a tutto il locale
+- [x] Le scritture passano da RPC: la policy diretta permetteva di allegare
+      un messaggio alla serata di un ALTRO locale (controllava solo il venue)
+- [ ] **Test:** pubblico dalla dashboard → compare a chi è in sessione senza
+      ricaricare; un messaggio legato a una serata non si vede da un'altra;
+      elimina e "in evidenza" funzionano
+
+**3g-2 — Memories e drink**
 - [ ] Memories: recap serate da `sessions` + `evs` + `matches` (view SQL),
       foto nel bucket `memories`
-- [ ] Drink: flusso reale con stato `pending_payment` (Stripe allo Step 6)
+- [ ] Drink: flusso reale con stato `pending_payment` (Stripe allo Step 6);
+      oggi il modale simula un pagamento con importi finti
 - [ ] **Test:** giro completo dell'app senza incontrare più dati finti
 
 **3h — Blocco e segnalazione** ← *obbligatorio per gli store*
@@ -294,10 +307,10 @@ Cose consapevolmente lasciate indietro, con il perché.
 
 | # | Debito | Perché esiste | Impatto |
 |---|---|---|---|
-| D1 | `MOCK_MEMORIES`, `MOCK_EVENTS`, `MOCK_VENUE_MESSAGES` ancora in `AppContext` (`MOCK_PEOPLE` rimosso in 3e) | Sostituiti in 3g | Medio: ricordi e messaggi del locale sono ancora finti |
+| D1 | `MOCK_MEMORIES` e `MOCK_EVENTS` ancora in `AppContext` (`MOCK_PEOPLE` rimosso in 3e, `MOCK_VENUE_MESSAGES` in 3g-1) | Sostituiti in 3g-2 | Medio: la pagina Ricordi è ancora finta |
 | D2 | Modalità ospite | Serviva per navigare la demo senza login | Medio: va rimossa o confinata, oggi crea stati ibridi |
 | D3 | Schermata Insight con dati inventati | Le statistiche reali richiedono aggregazioni | Basso: la UI lo dichiara |
-| D4 | Comunicazioni: UI con 4 categorie, DB ne accetta 2 | Il form non salva ancora | Medio: da riconciliare in 3g |
+| ~~D4~~ | ~~Comunicazioni: UI 4 categorie, DB 2~~ | **Risolto in 3g-1**: tipi allineati (promo, lineup, info, event) | — |
 | D5 | Logo e copertina del locale come URL liberi | Servirebbe upload su Storage | Medio: accettare URL arbitrari da mostrare è una porta aperta |
 | D6 | P.IVA e referente non persistiti | Identità di fatturazione, arriva con Stripe | Basso |
 | D7 | Etichetta della sala invisibile ai partecipanti | `night_qr_codes` è leggibile solo dall'owner | Medio: blocca "in che sala sei" |

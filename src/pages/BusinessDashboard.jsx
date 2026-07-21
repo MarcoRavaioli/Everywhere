@@ -8,6 +8,10 @@ import EvLogo from '@/components/everywhere/EvLogo';
 import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/lib/AuthContext';
 import {
+  fetchVenueMessages, createVenueMessage, deleteVenueMessage, setVenueMessagePinned,
+  MESSAGE_TYPES, VenueMessageError,
+} from '@/api/venueMessages';
+import {
   fetchMyVenue, fetchVenueStats, fetchNights, fetchNightStats, createNight,
   openNight, closeNight, createNightQr, deleteNightQr, rotateNightQr,
   nightState, qrState, checkInUrl, VenueError,
@@ -128,35 +132,92 @@ function InsightScreen() {
   );
 }
 
-function CommunicationsScreen() {
+function CommunicationsScreen({ venue }) {
   const [type, setType] = useState('promo');
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
+  const [pinned, setPinned] = useState(false);
+  const [nightId, setNightId] = useState('');   // '' = vale per tutto il locale
+  const [nights, setNights] = useState([]);
+  const [messages, setMessages] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
   const [sent, setSent] = useState(false);
 
-  const TYPES = [
-    { id: 'promo', label: 'Promozione' },
-    { id: 'lineup', label: 'Lineup' },
-    { id: 'update', label: 'Aggiornamento' },
-    { id: 'event', label: 'Evento' },
-  ];
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      const [msgs, nightList] = await Promise.all([
+        fetchVenueMessages(venue.id),
+        fetchNights(venue.id),
+      ]);
+      setMessages(msgs);
+      setNights(nightList);
+    } catch (err) {
+      setError(err instanceof VenueMessageError || err instanceof VenueError
+        ? err.message
+        : 'Caricamento non riuscito.');
+    } finally {
+      setLoading(false);
+    }
+  }, [venue.id]);
 
-  const handleSend = () => {
-    if (!title.trim() || !body.trim()) return;
-    setSent(true);
-    setTitle('');
-    setBody('');
-    setTimeout(() => setSent(false), 3000);
+  useEffect(() => { load(); }, [load]);
+
+  const handleSend = async () => {
+    if (busy) return;
+    setError(null);
+    setBusy(true);
+    try {
+      await createVenueMessage(venue.id, {
+        type,
+        title: title.trim(),
+        body: body.trim(),
+        nightId: nightId || null,
+        pinned,
+      });
+      setTitle('');
+      setBody('');
+      setPinned(false);
+      setSent(true);
+      setTimeout(() => setSent(false), 3000);
+      await load();
+    } catch (err) {
+      setError(err instanceof VenueMessageError ? err.message : 'Invio non riuscito. Riprova.');
+    } finally {
+      setBusy(false);
+    }
   };
+
+  const runOn = async (fn, failMsg) => {
+    if (busy) return;
+    setError(null);
+    setBusy(true);
+    try {
+      await fn();
+      await load();
+    } catch (err) {
+      setError(err instanceof VenueMessageError ? err.message : failMsg);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openNights = nights.filter(n => nightState(n) !== 'closed');
 
   return (
     <div className="space-y-5">
-      <h2 className="text-xl font-bold text-foreground">Comunicazioni</h2>
-      <p className="text-xs text-muted-foreground -mt-2">Raggiungi gli utenti presenti o chi ha partecipato a una tua sessione.</p>
+      <div>
+        <h2 className="text-xl font-bold text-foreground">Comunicazioni</h2>
+        <p className="text-xs text-muted-foreground mt-1">
+          Le vedono le persone presenti nel locale, in tempo reale.
+        </p>
+      </div>
 
-      {/* Type selector */}
+      {/* Tipo */}
       <div className="flex gap-2 flex-wrap">
-        {TYPES.map(t => (
+        {MESSAGE_TYPES.map(t => (
           <button
             key={t.id}
             onClick={() => setType(t.id)}
@@ -169,7 +230,13 @@ function CommunicationsScreen() {
 
       <div>
         <label className="text-xs text-muted-foreground uppercase tracking-wider mb-2 block">Titolo</label>
-        <Input value={title} onChange={e => setTitle(e.target.value)} placeholder="Es. Happy Hour dalle 23 🍹" className="h-12 bg-secondary border-border/50 rounded-xl text-foreground placeholder:text-muted-foreground/50" />
+        <Input
+          value={title}
+          onChange={e => setTitle(e.target.value)}
+          maxLength={120}
+          placeholder="Es. Happy Hour dalle 23 🍹"
+          className="h-12 bg-secondary border-border/50 rounded-xl text-foreground placeholder:text-muted-foreground/50"
+        />
       </div>
 
       <div>
@@ -177,29 +244,111 @@ function CommunicationsScreen() {
         <textarea
           value={body}
           onChange={e => setBody(e.target.value)}
+          maxLength={1000}
           placeholder="Scrivi il messaggio per il tuo pubblico..."
           rows={4}
           className="w-full bg-secondary border border-border/50 rounded-xl px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground/50 outline-none focus:border-primary/50 transition-colors resize-none"
         />
+        <p className="text-[10px] text-muted-foreground/50 mt-1 text-right">{body.length}/1000</p>
       </div>
+
+      <div>
+        <label className="text-xs text-muted-foreground uppercase tracking-wider mb-2 block">Destinatari</label>
+        <select
+          value={nightId}
+          onChange={e => setNightId(e.target.value)}
+          className="w-full h-12 px-3 bg-secondary border border-border/50 rounded-xl text-sm text-foreground outline-none focus:border-primary/50"
+        >
+          <option value="">Chiunque sia nel locale</option>
+          {openNights.map(n => (
+            <option key={n.id} value={n.id}>Solo: {n.title || 'Serata senza nome'}</option>
+          ))}
+        </select>
+      </div>
+
+      <label className="flex items-center gap-2 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={pinned}
+          onChange={e => setPinned(e.target.checked)}
+          className="w-4 h-4 accent-current text-primary"
+        />
+        <span className="text-xs text-muted-foreground">Metti in evidenza in cima</span>
+      </label>
+
+      {error && <p className="text-destructive text-sm text-center">{error}</p>}
 
       <AnimatePresence>
         {sent && (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="flex items-center gap-2 px-4 py-3 rounded-xl bg-primary/10 border border-primary/20">
             <Check className="w-4 h-4 text-primary" />
-            <p className="text-sm text-primary font-medium">Comunicazione inviata!</p>
+            <p className="text-sm text-primary font-medium">Comunicazione pubblicata!</p>
           </motion.div>
         )}
       </AnimatePresence>
 
       <Button
         onClick={handleSend}
-        disabled={!title.trim() || !body.trim()}
+        disabled={busy || !title.trim() || !body.trim()}
         className="w-full h-12 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold glow-pink"
       >
         <Send className="w-4 h-4 mr-2" />
-        Invia comunicazione
+        {busy ? 'Pubblicazione…' : 'Pubblica comunicazione'}
       </Button>
+
+      {/* Pubblicate */}
+      <div className="border-t border-border/40 pt-5">
+        <h3 className="text-xs text-muted-foreground uppercase tracking-wider mb-3">Pubblicate</h3>
+        {loading ? (
+          <div className="flex justify-center py-6">
+            <div className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+          </div>
+        ) : messages.length === 0 ? (
+          <p className="text-xs text-muted-foreground/60 text-center py-6">
+            Nessuna comunicazione pubblicata.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {messages.map(m => (
+              <div key={m.id} className="glass rounded-2xl p-4 space-y-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-foreground truncate">{m.title}</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">{m.body}</p>
+                    <p className="text-[10px] text-muted-foreground/60 mt-1">
+                      {MESSAGE_TYPES.find(t => t.id === m.type)?.label ?? m.type}
+                      {m.nightId ? ' · solo una serata' : ' · tutto il locale'} · {m.time}
+                    </p>
+                  </div>
+                  {m.pinned && (
+                    <span className="text-[10px] font-semibold px-2.5 py-0.5 rounded-full bg-primary/15 text-primary whitespace-nowrap">
+                      In evidenza
+                    </span>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => runOn(() => setVenueMessagePinned(m.id, !m.pinned), 'Operazione non riuscita.')}
+                    disabled={busy}
+                    variant="outline"
+                    className="flex-1 h-9 rounded-xl border-border/50 text-foreground text-xs"
+                  >
+                    {m.pinned ? 'Togli evidenza' : 'Metti in evidenza'}
+                  </Button>
+                  <Button
+                    onClick={() => runOn(() => deleteVenueMessage(m.id), 'Eliminazione non riuscita.')}
+                    disabled={busy}
+                    variant="outline"
+                    className="h-9 px-3 rounded-xl border-destructive/40 text-destructive text-xs"
+                  >
+                    Elimina
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -844,7 +993,7 @@ export default function BusinessDashboard() {
         </div>
         <div className="flex-1 px-5 py-5 overflow-y-auto pb-16">
           {screen === 'insight' && <InsightScreen />}
-          {screen === 'comms' && <CommunicationsScreen />}
+          {screen === 'comms' && <CommunicationsScreen venue={venue} />}
           {screen === 'session' && <NightsScreen venue={venue} onPresenceChange={loadVenue} />}
         </div>
       </div>

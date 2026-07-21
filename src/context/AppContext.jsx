@@ -8,6 +8,7 @@ import {
   sendEv as sendEvApi, ignoreEv as ignoreEvApi,
 } from '@/api/people';
 import { fetchMessagesByPerson, sendMessage as sendMessageApi, rowToMessage, ChatError } from '@/api/chat';
+import { fetchVisibleVenueMessages } from '@/api/venueMessages';
 import { supabase } from '@/lib/supabaseClient';
 
 const AppContext = createContext(null);
@@ -22,12 +23,6 @@ const MOCK_EVENTS = [
   { id: 'e1', venueName: 'Moon Club', venueImage: 'https://images.unsplash.com/photo-1566417713940-fe7c7e31e5f2?w=600&q=80', date: '12 Maggio 2024', evSent: 4, evReceived: 2, matches: 1 },
   { id: 'e2', venueName: 'Neon Garden', venueImage: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=600&q=80', date: '5 Maggio 2024', evSent: 2, evReceived: 3, matches: 2 },
   { id: 'e3', venueName: 'Stellar Rave', venueImage: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=600&q=80', date: '1 Aprile 2024', evSent: 6, evReceived: 1, matches: 0 },
-];
-
-const MOCK_VENUE_MESSAGES = [
-  { id: 'vm1', type: 'promo', title: 'Happy Hour 🍹', body: 'Dalle 23:00 all\'1:00 tutti i cocktail a €6. Mostra l\'app al barista.', time: '22:45', pinned: true },
-  { id: 'vm2', type: 'info', title: 'DJ Set speciale', body: 'Dalle 01:30 live set di Marco Carola. Main floor capienza limitata.', time: '22:30', pinned: false },
-  { id: 'vm3', type: 'info', title: 'Area fumatori', body: 'L\'area fumatori è disponibile nel cortile posteriore. Accesso dal corridoio laterale.', time: '22:00', pinned: false },
 ];
 
 export const ALL_TOPICS = [
@@ -58,7 +53,7 @@ export function AppProvider({ children }) {
   const matchIdByPerson = useRef({});                 // personId -> id del match (per la chat)
   const [memories] = useState(MOCK_MEMORIES);
   const [events] = useState(MOCK_EVENTS);
-  const [venueMessages] = useState(MOCK_VENUE_MESSAGES);
+  const [venueMessages, setVenueMessages] = useState([]);
   const [drinkNotifications, setDrinkNotifications] = useState([]);
   const [activeChats, setActiveChats] = useState({}); // personId -> messages[]
   // Il tempo rimasto si calcola dalla scadenza reale invece di scalare
@@ -121,6 +116,7 @@ export function AppProvider({ children }) {
       setSentEVs([]);
       setMatchedEVs([]);
       setActiveChats({});
+      setVenueMessages([]);
       setDrinkNotifications([]);
       setProfileChecked(true);
       return;
@@ -254,6 +250,18 @@ export function AppProvider({ children }) {
     }
   }, [session]);
 
+  const refreshVenueMessages = useCallback(async () => {
+    if (!session) {
+      setVenueMessages([]);
+      return;
+    }
+    try {
+      setVenueMessages(await fetchVisibleVenueMessages());
+    } catch (err) {
+      console.error('Caricamento comunicazioni fallito:', err);
+    }
+  }, [session]);
+
   const refreshEvs = useCallback(async () => {
     if (!session?.nightId) {
       setSentEVs([]);
@@ -307,11 +315,11 @@ export function AppProvider({ children }) {
     if (!session) return;
     let cancelled = false;
     setPeopleLoading(true);
-    Promise.all([refreshPeople(), refreshEvs()]).finally(() => {
+    Promise.all([refreshPeople(), refreshEvs(), refreshVenueMessages()]).finally(() => {
       if (!cancelled) setPeopleLoading(false);
     });
     return () => { cancelled = true; };
-  }, [session?.nightId, refreshPeople, refreshEvs]);
+  }, [session?.nightId, refreshPeople, refreshEvs, refreshVenueMessages]);
 
   // Realtime: arrivi e uscite dalla serata, EV ricevuti, match.
   // Senza questo la lista sarebbe ferma al momento dell'ingresso.
@@ -338,6 +346,11 @@ export function AppProvider({ children }) {
       // parte: non serve (e non si potrebbe) filtrare per match qui.
       .on(
         'postgres_changes',
+        { event: '*', schema: 'public', table: 'venue_messages' },
+        () => refreshVenueMessages()
+      )
+      .on(
+        'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'messages' },
         (payload) => {
           const row = payload.new;
@@ -354,7 +367,7 @@ export function AppProvider({ children }) {
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [session?.nightId, authUser?.id, refreshPeople, refreshEvs, appendMessage]);
+  }, [session?.nightId, authUser?.id, refreshPeople, refreshEvs, refreshVenueMessages, appendMessage]);
 
   // Invia un EV. Ritorna { matched } perché la UI possa festeggiare.
   const sendEV = useCallback(async (personId, note = null) => {
