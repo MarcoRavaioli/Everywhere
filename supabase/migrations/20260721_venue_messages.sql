@@ -147,4 +147,14 @@ grant execute on function public.delete_venue_message(uuid) to authenticated;
 grant execute on function public.set_venue_message_pinned(uuid, boolean) to authenticated;
 
 -- I presenti vedono comparire le comunicazioni senza ricaricare
-alter publication supabase_realtime add table public.venue_messages;
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'venue_messages'
+  ) then
+    alter publication supabase_realtime add table public.venue_messages;
+  end if;
+end $$;

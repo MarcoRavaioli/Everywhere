@@ -476,4 +476,14 @@ grant execute on function public.create_my_venue(
 ) to authenticated;
 
 -- Realtime: la dashboard segue apertura/chiusura e presenze
-alter publication supabase_realtime add table public.nights;
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'nights'
+  ) then
+    alter publication supabase_realtime add table public.nights;
+  end if;
+end $$;
