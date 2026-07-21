@@ -126,18 +126,27 @@ come reali (vedi l'avviso sulla schermata Insight).
 - [ ] **Test:** scansione reale da telefono; permesso negato → istruzioni
       chiare invece di schermata nera
 
-**3e — Persone nella serata + EV + match** ← *il cuore dell'app*
-- [ ] RPC `people_in_my_night()`: profili con sessione attiva nella mia
-      serata, con indicazione di chi è nella **mia sala** (grazie a
-      `sessions.qr_code_id`) e chi è altrove alla stessa festa
-- [ ] Serve una policy che permetta ai partecipanti di leggere l'etichetta
-      del proprio QR (oggi `night_qr_codes` è leggibile solo dall'owner)
-- [ ] Pagina Sessione: persone reali al posto di `MOCK_PEOPLE`
-- [ ] Invio EV via `send_ev` (con nota); ricevuti e match via Realtime
-- [ ] EVPage: EV reali, `ignore_ev`, celebrazione del match
+**✅ 3e — Persone nella serata + EV + match** (implementato, da testare)
+- [x] RPC `people_in_my_night()`: solo profili con sessione attiva nella mia
+      serata, con `same_room` per distinguere chi è entrato dal mio stesso QR
+- [x] `my_night_headcount()` per il conteggio in intestazione
+- [x] Policy: i partecipanti leggono l'etichetta della propria sala, e le
+      sessioni della propria serata (senza quest'ultima il Realtime non
+      notificherebbe mai gli arrivi altrui, perché la RLS li nasconde)
+- [x] **Correzione al modello:** gli EV erano unici per *locale*, retaggio di
+      prima delle serate: due persone incontratesi in due serate diverse
+      dello stesso locale non potevano rimandarsi un EV. Ora l'unità è la serata
+- [x] `send_ev` riscritto su `active_session_night` + **limite 20 EV/minuto**
+- [x] Pagina Sessione: persone reali divise tra "nella tua sala" e "altrove
+      alla serata", con stati loading/vuoto/errore
+- [x] Realtime su `sessions`, `evs`, `matches`: la lista resta viva
+- [x] L'invio conferma solo dopo l'esito del server (prima dichiarava
+      "inviato" comunque, anche in caso di errore)
+- [x] EVPage e PersonDetail non toccati: stesse forme dati, sorgente reale
 - [ ] **Test (2 account):** due utenti nella stessa serata si vedono; EV
       reciproco → match live su entrambi senza refresh; un terzo utente fuori
-      dalla serata non vede nessuno; chi è in un'altra sala si vede comunque
+      dalla serata non vede nessuno; chi è in un'altra sala si vede comunque;
+      il limite anti-spam scatta al 21° EV in un minuto
 
 **3f — Chat reale**
 - [ ] Chat su `messages` + Realtime, solo dentro un match
@@ -275,7 +284,7 @@ Cose consapevolmente lasciate indietro, con il perché.
 
 | # | Debito | Perché esiste | Impatto |
 |---|---|---|---|
-| D1 | `MOCK_PEOPLE`, `MOCK_MEMORIES`, `MOCK_EVENTS`, `MOCK_VENUE_MESSAGES` ancora in `AppContext` | Vengono sostituiti in 3e/3f/3g | Alto: l'app mostra ancora persone finte |
+| D1 | `MOCK_MEMORIES`, `MOCK_EVENTS`, `MOCK_VENUE_MESSAGES` ancora in `AppContext` (`MOCK_PEOPLE` rimosso in 3e) | Sostituiti in 3g | Medio: ricordi e messaggi del locale sono ancora finti |
 | D2 | Modalità ospite | Serviva per navigare la demo senza login | Medio: va rimossa o confinata, oggi crea stati ibridi |
 | D3 | Schermata Insight con dati inventati | Le statistiche reali richiedono aggregazioni | Basso: la UI lo dichiara |
 | D4 | Comunicazioni: UI con 4 categorie, DB ne accetta 2 | Il form non salva ancora | Medio: da riconciliare in 3g |
