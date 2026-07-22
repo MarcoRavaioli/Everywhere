@@ -9,7 +9,41 @@ import { useApp, ALL_TOPICS } from '@/context/AppContext';
 import { useAuth } from '@/lib/AuthContext';
 import { DEFAULT_AVATAR, AvatarError } from '@/api/avatars';
 import { fetchBlockedUsers, unblockUser } from '@/api/moderation';
+import { fetchMyStats } from '@/api/badges';
+import { computeBadges } from '@/lib/badges';
 import BottomNav from '@/components/everywhere/BottomNav';
+
+function BadgesSection({ stats }) {
+  if (!stats) return null;
+  const badges = computeBadges(stats);
+  return (
+    <div className="mb-8">
+      <h3 className="text-xs text-muted-foreground uppercase tracking-widest mb-3">
+        Riconoscimenti
+      </h3>
+      <div className="grid grid-cols-3 gap-2">
+        {badges.map(b => (
+          <div
+            key={b.code}
+            className={`rounded-xl p-3 text-center border ${
+              b.unlocked ? 'glass border-primary/30' : 'border-border/40 opacity-50'
+            }`}
+          >
+            <div className={`text-2xl mb-1 ${b.unlocked ? '' : 'grayscale'}`}>{b.emoji}</div>
+            <p className="text-[11px] font-medium text-foreground truncate">{b.label}</p>
+            {b.unlocked ? (
+              <p className="text-[10px] text-primary truncate">{b.tierName}</p>
+            ) : (
+              <p className="text-[10px] text-muted-foreground">
+                {b.value}/{b.nextThreshold}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function SettingsItem({ icon: Icon, label, value, onClick }) {
   return (
@@ -52,7 +86,7 @@ function EditProfileModal({ user, onSave, onClose }) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex flex-col bg-background overflow-y-auto"
+      className="fixed inset-0 z-[60] flex flex-col bg-background overflow-y-auto"
     >
       <div className="glass-strong px-4 pt-6 pb-3 flex items-center justify-between sticky top-0 z-10">
         <button onClick={onClose} className="w-9 h-9 rounded-full glass flex items-center justify-center">
@@ -191,7 +225,7 @@ function BlockedUsersSheet({ onClose }) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex flex-col bg-background"
+      className="fixed inset-0 z-[60] flex flex-col bg-background"
     >
       <div className="glass-strong px-4 pt-6 pb-3 flex items-center gap-3">
         <button onClick={onClose} className="w-9 h-9 rounded-full glass flex items-center justify-center">
@@ -256,7 +290,18 @@ export default function Profile() {
   const [leaving, setLeaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [photoError, setPhotoError] = useState(null);
+  const [stats, setStats] = useState(null);
   const fileInputRef = useRef(null);
+
+  // I riconoscimenti sono derivati: si leggono anche fuori da una serata
+  useEffect(() => {
+    let cancelled = false;
+    if (!currentUser || currentUser.isGuest) return;
+    fetchMyStats()
+      .then(s => { if (!cancelled) setStats(s); })
+      .catch(err => console.error('Caricamento riconoscimenti fallito:', err));
+    return () => { cancelled = true; };
+  }, [currentUser?.id, currentUser?.isGuest]);
 
   const handlePhotoSelected = async (e) => {
     const file = e.target.files?.[0];
@@ -403,6 +448,9 @@ export default function Profile() {
           </div>
         )}
 
+        {/* Riconoscimenti */}
+        <BadgesSection stats={stats} />
+
         {/* Settings */}
         <div className="space-y-1.5 mb-8">
           <h3 className="text-xs text-muted-foreground uppercase tracking-widest mb-3">
@@ -458,13 +506,13 @@ export default function Profile() {
       <AnimatePresence>
         {menuOpen && (
           <>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-40 bg-black/60" onClick={() => setMenuOpen(false)} />
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[55] bg-black/60" onClick={() => setMenuOpen(false)} />
             <motion.div
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
               transition={{ type: 'spring', damping: 28, stiffness: 280 }}
-              className="fixed bottom-0 left-0 right-0 z-50 glass-strong rounded-t-3xl px-5 pt-5 pb-10"
+              className="fixed bottom-0 left-0 right-0 z-[60] glass-strong rounded-t-3xl px-5 pt-5 pb-10"
             >
               <div className="w-10 h-1 rounded-full bg-border/60 mx-auto mb-5" />
               <h3 className="text-sm font-bold text-foreground mb-4">Impostazioni</h3>

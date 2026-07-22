@@ -1,9 +1,8 @@
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { QrCode, User } from 'lucide-react';
+import { QrCode, User, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import EvLogo from '@/components/everywhere/EvLogo';
 import { useApp } from '@/context/AppContext';
 import { DEFAULT_AVATAR } from '@/api/avatars';
 
@@ -63,6 +62,14 @@ export default function Home() {
           <QrCode className="w-5 h-5 mr-2" />
           Scannerizza un QR Code
         </Button>
+
+        <button
+          onClick={() => navigate('/group')}
+          className="w-full h-12 mt-3 rounded-xl glass border border-border/50 text-foreground font-medium text-sm flex items-center justify-center gap-2 hover:border-primary/40 transition-colors"
+        >
+          <Users className="w-4 h-4" />
+          Crea o entra in un gruppo
+        </button>
 
         <p className="text-muted-foreground/50 text-xs mt-6 leading-relaxed">
           Potrai vedere chi è presente e inviare EV.

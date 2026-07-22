@@ -206,7 +206,7 @@ function ChatModal({ person, onClose }) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex flex-col bg-background"
+      className="fixed inset-0 z-[60] flex flex-col bg-background"
     >
       {/* Header */}
       <div className="glass-strong px-4 pt-6 pb-3 flex items-center gap-3">

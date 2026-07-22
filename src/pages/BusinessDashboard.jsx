@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
-import { BarChart2, MessageSquare, Play, QrCode, X, ChevronRight, Check, Send, Users, TrendingUp, Clock, Zap, Crown, CreditCard, User, Settings, LogOut, Share2, Printer, RefreshCw, AlertTriangle } from 'lucide-react';
+import { BarChart2, MessageSquare, Play, QrCode, X, ChevronRight, Check, Send, Users, Zap, Crown, CreditCard, User, Settings, LogOut, Share2, Printer, RefreshCw, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import EvLogo from '@/components/everywhere/EvLogo';
@@ -16,8 +16,85 @@ import {
   openNight, closeNight, createNightQr, deleteNightQr, rotateNightQr,
   nightState, qrState, checkInUrl, isLocalOnlyOrigin, VenueError,
 } from '@/api/venues';
+import { fetchNightParticipants } from '@/api/badges';
+import { unlockedBadges } from '@/lib/badges';
+import { DEFAULT_AVATAR } from '@/api/avatars';
 import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+
+// Elenco dei partecipanti di una serata coi loro badge (vista locale).
+// Il locale vede identità e riconoscimenti solo delle PROPRIE serate.
+function ParticipantsModal({ nightId, nightTitle, onClose }) {
+  const [list, setList] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchNightParticipants(nightId)
+      .then(rows => { if (!cancelled) setList(rows); })
+      .catch(err => { if (!cancelled) setError(err?.message ?? 'Caricamento non riuscito.'); });
+    return () => { cancelled = true; };
+  }, [nightId]);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[60] flex flex-col bg-background"
+    >
+      <div className="glass-strong px-4 pt-6 pb-3 flex items-center gap-3">
+        <button onClick={onClose} className="w-9 h-9 rounded-full glass flex items-center justify-center flex-shrink-0">
+          <X className="w-4 h-4 text-muted-foreground" />
+        </button>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-foreground truncate">Partecipanti</p>
+          <p className="text-[10px] text-muted-foreground truncate">{nightTitle || 'Serata'}</p>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-4 py-4">
+        {error ? (
+          <p className="text-sm text-muted-foreground text-center py-10">{error}</p>
+        ) : !list ? (
+          <div className="flex justify-center py-16">
+            <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+          </div>
+        ) : list.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-10">
+            Ancora nessun partecipante in questa serata.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {list.map(p => {
+              const badges = unlockedBadges(p.stats);
+              return (
+                <div key={p.id} className="glass rounded-xl p-3 flex items-center gap-3 border border-border/40">
+                  <div className="relative w-10 h-10 rounded-full overflow-hidden flex-shrink-0 border border-border/50">
+                    <img src={p.photo || DEFAULT_AVATAR} alt={p.name} className="w-full h-full object-cover"
+                      onError={(e) => { e.currentTarget.src = DEFAULT_AVATAR; }} />
+                    {p.present && <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-primary border border-background" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground truncate">{p.name}</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {p.present ? 'Presente ora' : 'Uscito'}
+                    </p>
+                  </div>
+                  <div className="flex gap-1 flex-shrink-0">
+                    {badges.length === 0 ? (
+                      <span className="text-[10px] text-muted-foreground/50">—</span>
+                    ) : badges.map(b => (
+                      <span key={b.code} title={`${b.label}: ${b.tierName}`} className="text-lg">{b.emoji}</span>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
+}
 
 // ─── Mock data ─────────────────────────────────────────────────────────────
 const INSIGHT_DATA = {
@@ -1010,7 +1087,7 @@ function NightsScreen({ venue, onPresenceChange, onWrite, initialNightId = null 
 // ─── Main Dashboard ──────────────────────────────────────────────────────────
 // Serata in corso (o la prossima programmata) mostrata già aperta nella
 // home del locale: durante una serata vera non c'è tempo di navigare.
-function ActiveNightCard({ night, stats, onShowQr, onWrite, onOpenNight, onCloseNight, busy }) {
+function ActiveNightCard({ night, stats, onShowQr, onWrite, onOpenNight, onCloseNight, onShowParticipants, busy }) {
   const state = nightState(night);
   const isOpen = state === 'open';
 
@@ -1087,6 +1164,19 @@ function ActiveNightCard({ night, stats, onShowQr, onWrite, onOpenNight, onClose
         })}
       </div>
 
+      {isOpen && (
+        <div className="px-4 pb-3">
+          <Button
+            onClick={() => onShowParticipants(night)}
+            variant="outline"
+            className="w-full h-9 rounded-lg border-border/50 text-foreground text-xs"
+          >
+            <Users className="w-3.5 h-3.5 mr-1.5" />
+            Partecipanti e badge
+          </Button>
+        </div>
+      )}
+
       <div className="px-4 pb-4 flex gap-2">
         <Button
           onClick={() => onWrite(`night:${night.id}`)}
@@ -1130,6 +1220,7 @@ export default function BusinessDashboard() {
   const [venue, setVenue] = useState(null);
   const [stats, setStats] = useState({ activeNow: 0, totalSessions: 0, failed: false });
   const [focusNight, setFocusNight] = useState(null);   // serata in corso o prossima
+  const [participantsNight, setParticipantsNight] = useState(null); // vista partecipanti+badge
   const [focusStats, setFocusStats] = useState({ activeNow: 0, byQr: {} });
   const [commsTarget, setCommsTarget] = useState('');
   const [initialNightId, setInitialNightId] = useState(null);
@@ -1294,8 +1385,19 @@ export default function BusinessDashboard() {
             onWrite={openComms}
             onOpenNight={(id) => runOnNight(openNight, id)}
             onCloseNight={(id) => runOnNight(closeNight, id)}
+            onShowParticipants={setParticipantsNight}
           />
         )}
+
+        <AnimatePresence>
+          {participantsNight && (
+            <ParticipantsModal
+              nightId={participantsNight.id}
+              nightTitle={participantsNight.title}
+              onClose={() => setParticipantsNight(null)}
+            />
+          )}
+        </AnimatePresence>
 
         {/* Main actions */}
         <div className="grid grid-cols-2 gap-3">

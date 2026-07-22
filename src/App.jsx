@@ -5,6 +5,7 @@ import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-d
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import { AppProvider } from '@/context/AppContext';
+import { GroupProvider } from '@/context/GroupContext';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
 // Pages
@@ -22,6 +23,8 @@ import EVPage from '@/pages/EVPage';
 import Locale from '@/pages/Local';
 import Memories from '@/pages/Memories';
 import Profile from '@/pages/Profile';
+import GroupHub from '@/pages/GroupHub';
+import JoinGroup from '@/pages/JoinGroup';
 
 // Layout
 import SessionLayout from '@/components/everywhere/SessionLayout';
@@ -51,6 +54,10 @@ const AuthenticatedApp = () => {
       {/* Il profilo si cura anche da casa: fuori da SessionLayout, che
           richiede una sessione attiva in un locale */}
       <Route path="/profile" element={<Profile />} />
+      {/* Gruppi: si gestiscono dentro e fuori sessione (si formano anche
+          prima di entrare in una serata) */}
+      <Route path="/group" element={<GroupHub />} />
+      <Route path="/join-group" element={<JoinGroup />} />
 
       {/* Session routes with bottom nav */}
       <Route element={<SessionLayout />}>
@@ -72,12 +79,14 @@ function App() {
       <AuthProvider>
         <QueryClientProvider client={queryClientInstance}>
           <AppProvider>
-            <Router>
-              <div className="dark">
-                <AuthenticatedApp />
-              </div>
-            </Router>
-            <Toaster />
+            <GroupProvider>
+              <Router>
+                <div className="dark">
+                  <AuthenticatedApp />
+                </div>
+              </Router>
+              <Toaster />
+            </GroupProvider>
           </AppProvider>
         </QueryClientProvider>
       </AuthProvider>

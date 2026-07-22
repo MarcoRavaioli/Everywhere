@@ -9,7 +9,7 @@ resta da verificare*, senza dare per riuscito ciò che non ha provato.
 
 > ⚠️ **Stato reale:** il codice è molto più avanti dei test. Quasi nulla di
 > quanto costruito è stato validato su dati veri. La procedura completa,
-> con passi e risultati attesi, è in **[TESTING.md](TESTING.md)**: è la cosa
+> con passi e risultati attesi, è in **[TESTING.md](docs/TESTING.md)**: è la cosa
 > più utile da fare adesso, prima di aggiungere altre funzioni.
 
 ---
@@ -32,6 +32,10 @@ piano (subscription | pay_per_night)
         └── serate (nights)          orari programmati + apertura/chiusura manuale
               └── QR (night_qr_codes) uno o più: ingresso, sale, zone
                     └── check-in (sessions)  registra da quale QR si è entrati
+
+gruppo (groups)                    QR proprio, scade in 1h o con la serata
+  └── membri (group_members)       visibilità: solo gruppo | singolo e gruppo
+        entra in una serata e vi appare come un'unica entità (v. 3j)
 ```
 
 ### Stack
@@ -312,6 +316,137 @@ Tutto ciò che è stato consapevolmente rimandato, in un unico posto.
 - [ ] Convertire `city + address` in coordinate (Nominatim/OSM via Edge
       Function, oppure inserimento manuale dalla dashboard)
 
+**3j — Partecipazione in gruppo** (in corso, spezzata in sotto-tappe)
+
+Un insieme di persone può presentarsi alla serata come **un'unica entità**.
+Serve, ad esempio, a chi non vuole ricevere EV da singolo ma è disposto ad
+accogliere qualcuno *nel* gruppo. La feature è la più invasiva del progetto
+(tocca visibilità, presenza, EV e — soprattutto — il modello match/chat a due
+utenti, **D13**): per questo è divisa in quattro bricchi indipendenti.
+
+**✅ 3j-1 — Fondazione del gruppo** (implementato in
+`supabase/migrations/20260722_groups.sql`, **da applicare e testare**)
+- [x] Tabelle `groups` (leader, `night_id` nullable, `status`, `expires_at`,
+      `entered_night_at`, `dissolved_at`), `group_qr_tokens` (token generato
+      dal server, come i QR serata) e `group_members` (`visibility`,
+      `is_leader`). RLS attiva, **scritture solo via RPC** `security definer`
+- [x] RPC: `create_group`, `join_group`, `leave_group`,
+      `transfer_leadership`, `set_group_visibility`, `set_group_display`,
+      `enter_night_as_group`, `dissolve_group`, `my_group`
+- [x] **Vitalità derivata, non memorizzata** (`is_group_active`): forming ⇒
+      entro 1h; in_night ⇒ finché la serata è aperta. Così alla chiusura della
+      serata il gruppo decade **da solo** e **non è stato necessario toccare**
+      `close_night` / `end_session` / `check_in` (nessuna RPC testata modificata)
+- [x] Capogruppo che lascia ⇒ **leadership al membro più anziano**; ultimo che
+      resta ⇒ gruppo sciolto. Un utente in **un solo gruppo attivo**; **max 8**
+- [x] Unica modifica a codice esistente: aggiunta **additiva** a
+      `can_view_profile` (`in_same_active_group`), così i co-membri si vedono
+      anche mentre il gruppo si sta formando fuori serata
+- [x] RLS senza ricorsione: le policy usano l'helper `is_group_member`
+      (`security definer`), non una subquery sulla stessa tabella
+- [x] Realtime su `groups` e `group_members`
+- [ ] **Non applicata su Supabase** (nessun Postgres locale per validarla):
+      Marco la esegue nell'SQL editor
+- [ ] **Test (SQL, 2-3 account):** creo gruppo → `my_group` lo mostra; secondo
+      account entra col token; un terzo non membro non legge né `groups` né
+      `group_members` (RLS); `join` bloccato se già in un gruppo, se pieno (9°),
+      se token errato; capogruppo `leave` → leadership trasferita; ultimo
+      `leave` → sciolto; gruppo forming dopo 1h risulta inattivo; agganciato a
+      una serata e poi serata chiusa ⇒ inattivo senza job
+
+**✅ 3j-1b — Uscita dalla serata = uscita dal gruppo** (implementato in
+`supabase/migrations/20260722_groups_exit.sql`, **da applicare e testare**)
+- [x] **Deciso:** chi esce dalla serata (QR di uscita o "Esci dalla serata")
+      lascia **solo sé stesso** dal gruppo; il gruppo prosegue. Capo che esce
+      ⇒ leadership al più anziano; ultimo che esce ⇒ sciolto
+- [x] Realizzato con un **trigger** su `sessions` (transizione `ended_at`
+      null→valorizzato), **non** riscrivendo `check_in`/`end_session`: vale per
+      ogni percorso di uscita, `close_night` compreso, senza toccare RPC testate
+- [x] Ambito: rimuove solo da un gruppo `in_night` **legato a quella serata**;
+      un gruppo ancora `forming` non è toccato
+- [ ] **Test:** in serata, un non-capo esce → sparisce dal gruppo, gli altri
+      restano; il capo esce → leadership trasferita; esce l'ultimo → sciolto;
+      la chiusura serata scioglie il gruppo
+
+**✅ 3j-2 — Presenza del gruppo nella serata** (implementato in
+`supabase/migrations/20260722_groups_presence.sql`, **da applicare e testare**)
+- [x] `people_in_my_night()` v3: parte dalla 3h (filtro blocchi) ed **esclude
+      i membri "solo gruppo"** come individui; i "singolo e gruppo" restano
+- [x] `groups_in_my_night()`: i gruppi `in_night` della mia serata come entità
+      uniche, coi soli membri effettivamente presenti (sessione attiva) e non
+      bloccati; nasconde il mio stesso gruppo
+- [x] `send_ev` v3: parte dalla 3e e **rifiuta** un EV verso un "solo gruppo"
+      (`receiver_group_only`); l'interesse passa dall'EV al gruppo (3j-4)
+- [x] La foto del gruppo: override `photo_path` oppure cluster degli avatar dei
+      membri composto lato client (niente immagine finta)
+- [ ] Esclusione dai **drink** a livello di RPC: rimandata allo Step 6 (il
+      flusso drink oggi non esiste)
+- [ ] **Test:** il gruppo appare come entità singola a un terzo; un "solo
+      gruppo" non compare come individuo e `send_ev` lo rifiuta anche via API
+
+**✅ 3j-3 — Frontend crea/entra/gestisci** (implementato, **da testare**)
+- [x] `GroupContext` (stato gruppo + gruppi in serata + EV di gruppo + chat,
+      con realtime) e `src/api/groups.js`
+- [x] Pagina `/group` (`GroupHub`): crea/entra, QR d'invito (`qrcode.react`),
+      countdown 1h in formazione, lista membri live con corona del capo,
+      toggle visibilità, "rendi capo", "porta il gruppo in serata", esci/sciogli
+- [x] Pagina `/join-group?g=<token>` (`JoinGroup`): ingresso via QR, con stati
+      accesso-richiesto/errore; si accetta anche il token incollato
+- [x] Ingressi da Home ("Crea o entra in un gruppo") e banner in `Session`
+- [x] Card dei gruppi presenti nel feed della serata, con "EV al gruppo"
+- [x] Build e lint puliti; pagine renderizzate senza errori in console
+- [ ] **Test (loggato):** creo gruppo → QR → 2° account entra; countdown;
+      cambio visibilità; trasferimento leadership; uscita
+
+**✅ 3j-4 — Chat di gruppo (D13)** (implementato in
+`supabase/migrations/20260722_groups_chat.sql`, **da applicare e testare**)
+- [x] **Scelta:** niente stravolgimento del match/chat 1:1 (già testato). Un
+      **sistema parallelo**: `group_evs` → `group_matches` → `group_messages`,
+      con RLS, realtime e RPC dedicate
+- [x] EV verso il gruppo (`send_group_ev`, stesso freno anti-spam); **qualsiasi
+      membro accetta** (`accept_group_ev`) → nasce la conversazione condivisa;
+      `send_group_message` aperta a tutti i partecipanti (singolo + membri)
+- [x] Frontend: EV al gruppo dal feed, EV in arrivo (accetta/ignora) e chat
+      condivisa nel `GroupHub`, con realtime
+- [ ] **Test (più account):** EV al gruppo → un membro accetta → tutti i membri
+      e il mittente vedono e scrivono nella stessa chat; un estraneo non la legge
+
+**✅ 3k — Badge e gameability** (implementato in
+`supabase/migrations/20260722_badges.sql`, **da applicare e testare**)
+- [x] Backend: `count_nights_attended` / `count_drinks_offered` /
+      `count_matches` (derivati, come i Ricordi: nessuna tabella da
+      sincronizzare), `my_stats()` per il profilo, e
+      `night_participants_with_stats(p_night)` per il locale (solo l'owner
+      della serata)
+- [x] Catalogo badge nel **frontend** (`src/lib/badges.js`), un solo posto:
+      **serate** (10/50/100), **drink** (20/40/80), **match** (5/25/50), con
+      soglie/nomi/emoji. I conteggi vengono dal backend
+- [x] Profilo: sezione **"Riconoscimenti"** (badge sbloccati + progresso)
+- [x] Dashboard locale: pulsante **"Partecipanti e badge"** sulla serata in
+      corso → elenco dei partecipanti (presenti/usciti) coi badge sbloccati
+- [x] Build e lint puliti (rimossi anche 2 import morti pre-esistenti)
+- [ ] **Drink a 0** finché non esiste il flusso drink (**Step 6**): la
+      funzione conta già `drinks` in stato `paid`/`redeemed`
+- [ ] ⚠️ **Privacy (debito D14):** il locale ora vede **identità + badge** dei
+      partecipanti delle SUE serate (prima solo conteggi). Va **dichiarato
+      nell'informativa** e resta aperto se renderlo **opt-in** per l'utente
+- [ ] **Test:** raggiunta una soglia il badge compare a me e, nella dashboard,
+      al locale organizzatore; un locale **diverso** non ottiene righe
+      (`not_venue_owner`); i conteggi combaciano coi dati reali
+
+**✅ 3l — Fix di layout: overlay coperti dalla bottom nav** (implementato, da testare da loggato)
+- [x] La barra di testo della **chat** (dopo il match) era irraggiungibile:
+      il `ChatModal` era `z-50`, **identico** alla `BottomNav`, che viene
+      renderizzata dopo nel DOM e vinceva lo stacking coprendo la parte bassa
+- [x] Stesso difetto su **modifica profilo**, **impostazioni** (drawer) e
+      **persone bloccate**
+- [x] Alzati gli overlay sopra la nav: `z-[60]` (drawer impostazioni con
+      sfondo `z-[55]`). La nav resta `z-50`
+- [x] Verificato: build e caricamento senza errori in console
+- [ ] **Test (da loggato):** in un match la barra chat è raggiungibile e sopra
+      la nav; il pulsante "Salva" in modifica profilo non è più coperto; tutte
+      le righe del drawer Impostazioni sono cliccabili
+
 ### Gate — prima di far entrare utenti veri
 
 Da completare **tutti** prima di aprire a persone che non conosci:
@@ -352,12 +487,30 @@ Da completare **tutti** prima di aprire a persone che non conosci:
 - [ ] `open_night` pretende `payment_status in ('paid','waived')` — il
       controllo è già previsto nel codice, oggi disattivato per poter testare
 - [ ] Abbonamento locale + acquisto serata singola
-- [ ] Drink: **decisione aperta**, incassa la piattaforma o il locale?
-      (il secondo caso richiede Stripe Connect)
 - [ ] PaymentIntent via Edge Function; webhook → stato aggiornato **solo**
       con service role
 - [ ] **Test:** il client non può forzare `paid` via API; pagamento di prova
       aggiorna lo stato solo tramite webhook
+
+**Drink — modello deciso** *(v. studio in §10)*
+- [ ] **La piattaforma è merchant of record:** incassa lei il pagamento
+      dell'utente (prezzo drink + sovrapprezzo). **Niente Stripe Connect**:
+      serve solo se il denaro andasse direttamente al locale
+- [ ] Flusso: utente offre drink → PaymentIntent → stato `pending_payment`
+      → webhook → `paid`. Il drink pagato entra in una **coda "da servire"**
+      sulla dashboard del locale (nome/tavolo o codice di ritiro), con notifica
+- [ ] Fine serata: **rendiconto automatico** (N drink × prezzo concordato).
+      ⚠️ **Non** è una fattura emessa per conto del locale: è la base con cui
+      **il locale fattura alla nostra società** i drink erogati. Emettere
+      fattura al posto del locale (autofattura) richiede un accordo esplicito
+      a contratto
+- [ ] Ricavo = sovrapprezzo (differenza tra incasso dall'utente e costo
+      concordato col locale)
+- [ ] I **gruppi** sono esclusi dai drink, a livello di RPC (v. 3j)
+- [ ] **Attriti da validare con un locale-pilota:** il barista deve vedere
+      l'ordine già pagato in una serata caotica (MVP = dashboard + suono, non
+      integrazione col loro POS); il locale eroga stasera ma incassa da noi
+      dopo (tempi di pagamento da definire, v. Decisioni aperte)
 
 ---
 
@@ -431,6 +584,8 @@ Cose consapevolmente lasciate indietro, con il perché.
 | D10 | Bundle unico da 1,14 MB | Nessun code splitting | Medio: prima apertura lenta in 3G |
 | D11 | Geocoding assente | Rimandato | Basso finché non serve "locali vicini" |
 | ~~D12~~ | ~~Nessun error boundary~~ | **Risolto**: `ErrorBoundary` attorno all'app, verificato con un guasto reale | — |
+| ~~D13~~ | ~~Chat/match a due utenti, non predisposti ai gruppi~~ | **Risolto in 3j-4** con un sistema parallelo (`group_evs`/`group_matches`/`group_messages`): il match 1:1 resta intatto | — |
+| D14 | Il locale vede solo conteggi, non identità | Modello di privacy attuale (§2) | Medio: la 3k vuole mostrargli partecipanti e badge → serve informativa/opt-in |
 
 ---
 
@@ -447,11 +602,24 @@ Cose consapevolmente lasciate indietro, con il perché.
 | Step 3c-4 | Più serate aperte per locale ammesse | Richiesto: eventi paralleli |
 | Step 3c-5 | Email+password è un login reale (prima era solo per i test) | Riduce l'attrito e semplifica i test a più account |
 | Step 3d | Il QR contiene un URL, non un token nudo | Funziona con la fotocamera di sistema ed è pronto per i deep link |
+| Step 3j | Il gruppo appare come un unico utente, con chat condivisa | È la promessa del prodotto: presentarsi insieme, non come singoli |
+| Step 3j | La leadership del gruppo è trasferibile, non fissa | Un membro non deve poter far cadere il gruppo uscendo |
+| Step 3j | Uscire dalla serata fa lasciare il gruppo solo a chi esce | Coerente con la leadership trasferibile; il gruppo resta vivo per gli altri |
+| Step 3j-1 | Vitalità del gruppo derivata, non memorizzata | Come sessioni e ricordi: alla chiusura serata il gruppo decade da sé, senza toccare `close_night` |
+| Step 3k | I badge li vedono l'utente e il locale organizzatore | Richiesto: dà al locale visibilità sul pubblico; con riserva privacy |
+| Step 6 | I drink li incassa la piattaforma (merchant of record), niente Connect | Controllo del flusso e del margine; il locale fattura a noi i drink erogati |
 
 ## 8. Decisioni aperte
 
-- **Drink**: incassa la piattaforma o il locale? (Stripe Connect nel secondo
-  caso). Serve prima dello Step 6.
+- **Drink** *(chi incassa: risolto — la piattaforma)*: restano aperti il
+  **sovrapprezzo**, i **tempi di pagamento al locale**, e se mettere a
+  contratto l'**autofattura** (emettere noi la fattura per conto del locale).
+  Da validare con un locale-pilota.
+- **Gruppi — limiti** *(già a default nel codice, confermabili)*: un utente in
+  **un solo gruppo attivo**, **max 8 membri**. Cambiarli è un punto solo.
+- **Badge visibili al locale**: renderlo **opt-in** per l'utente? Fin dove
+  arriva ciò che il locale vede del pubblico (solo badge, o anche profili)?
+  Tocca la promessa di privacy, va deciso prima di esporlo.
 - **Prezzi**: quanto costano serata singola e abbonamento.
 - **Verifica dell'età**: solo dichiarata o verificata davvero? Cambia molto
   sul piano legale per un'app con incontri.
@@ -476,3 +644,137 @@ Cose consapevolmente lasciate indietro, con il perché.
   passi esatti
 - Per i test a due utenti: Supabase → Authentication → Add user, oppure
   registrazione email+password, e una finestra in incognito
+
+---
+
+## 10. Studio: come funzionano i drink offerti
+
+*Ha senso? È attuabile? I locali sono ben disposti?* Sintesi della decisione
+presa (v. §7 e Step 6).
+
+**Modello scelto — la piattaforma incassa.** L'utente offre un drink e paga
+in app (prezzo + sovrapprezzo): l'incasso arriva a noi, non al locale. La
+piattaforma diventa *merchant of record*. È lo schema più pulito: controlliamo
+flusso, dati e margine, e ci prendiamo noi il rischio di credito verso
+l'utente. Stesso principio di Glovo/JustEat lato ristorante.
+
+**È attuabile con Stripe standard — niente Connect.** Connect servirebbe solo
+se il denaro dovesse arrivare *direttamente* sul conto del locale. Qui incassa
+la piattaforma e paga il locale a parte, quindi basta Stripe standard:
+`PaymentIntent` → `pending_payment` → webhook → `paid`, drink in coda "da
+servire" sulla dashboard del locale.
+
+**Il punto delicato è fiscale, non tecnico.** Il "documento automatico" non è
+una fattura che emettiamo *per conto del locale*. Il giro corretto è:
+1. l'utente paga a noi → **noi emettiamo ricevuta/fattura all'utente** (IVA
+   inclusa);
+2. il locale ci ha "venduto all'ingrosso" i drink erogati → **il locale
+   emette fattura verso la nostra società** per il costo concordato;
+3. la differenza è il nostro margine.
+Il sistema può generare un **rendiconto** (N drink × prezzo) che il locale usa
+come base per *la sua* fattura. Emettere la fattura al posto del locale
+(autofattura) è possibile ma va messo a contratto.
+
+**I locali sono ben disposti? Dipende da due attriti concreti.**
+- **Operatività al bancone:** il barista deve vedere l'ordine e sapere che è
+  già pagato, in una serata caotica. Senza integrazione col loro POS è un
+  secondo schermo da guardare. MVP realistico: la dashboard che già esiste,
+  con coda e notifica sonora.
+- **Tempi d'incasso:** loro erogano stasera e incassano da noi dopo (su
+  fattura). Ai locali piace incassare subito: vanno garantiti pagamenti rapidi
+  e affidabili.
+
+**Il gancio di vendita per il locale:** consumazioni extra a costo di
+acquisizione zero (un drink offerto = due persone al bancone invece di una) e
+nessun rischio di credito verso l'utente. Con questo framing molti sono ben
+disposti — ma **serve un locale-pilota** per validare attriti e tempi prima di
+generalizzare.
+
+---
+
+## 11. 🔮 Feature Backlog & Engagement Strategies (Post-MVP)
+
+> ⚠️ **Idee in valutazione da parte del Board — NON implementare nell'MVP.**
+> Questa sezione raccoglie proposte pensate per **abbattere l'attrito
+> psicologico dell'interazione dal vivo** (paura del rifiuto, blocco da
+> schermo bianco, distanza fra match digitale e incontro fisico). Sono
+> deliberatamente **fuori dallo scope dell'attuale MVP**: la priorità resta
+> **validare il core-loop `Scan → View → EV`** su dati veri (v. §3 e §4).
+> Nessuna di queste va costruita finché il core-loop non è validato, per non
+> disperdere il focus.
+
+**Come leggere questa lista.** Sono spunti di prodotto, non impegni: mancano
+progettazione dati, verifiche di sicurezza/RLS e conferma di sostenibilità
+(v. §2). Diverse toccano la **promessa di privacy** e vanno perciò allineate
+con le Decisioni aperte (§8) e con il registro del debito (§6) prima di
+diventare tappe vere.
+
+| # | Idea | Attrito che risolve | Nota implementativa (a monte) |
+|---|---|---|---|
+| B1 | Scarcity & FOMO (limite EV) | Il gesto vale poco se è illimitato | Limite lato server (come `send_ev`), non solo UI |
+| B2 | Icebreakers guidati | Blocco da schermo bianco | Richiede i Topic in comune già esposti |
+| B3 | Micro-stati di localizzazione | Distanza fra match e incontro fisico | Nuovo campo di stato sul profilo/sessione, effimero |
+| B4 | "Match & Claim" (phygital) | Passività: nessun motivo per muoversi | Serve il locale come attore + drop promozionali |
+| B5 | Digital Wingman (EV per procura) | Paura del rifiuto in prima persona | Dipende dai gruppi (§3j) e dalla social proof |
+
+### B1 — Scarcity & FOMO (limite EV)
+
+Limitare il numero di **EV a disposizione per sessione** (es. **massimo 3**)
+per aumentare il **valore percepito** del gesto e spingere l'utente a
+un'azione **ponderata** anziché a un invio a tappeto. A completamento,
+**notifiche di countdown** verso la fine della serata ("restano pochi EV",
+"la serata sta per chiudere") per innescare l'urgenza nel momento giusto.
+
+- Da studiare: il limite va applicato **lato server** (come l'attuale rate
+  limit di `send_ev`, §5), non solo in UI, altrimenti è aggirabile via API.
+- Tensione da risolvere: un tetto troppo basso può frenare l'attività iniziale
+  quando i volumi sono ancora sottili. Numero da tarare, non da fissare a priori.
+
+### B2 — Icebreakers guidati
+
+Fornire **frasi pre-compilate** — ironiche o contestuali — al momento
+dell'invio di un EV, generate a partire dai **Topic (interessi) in comune**,
+per sconfiggere il **blocco da schermo bianco**.
+
+- Prerequisito: gli interessi condivisi devono già essere calcolati ed esposti
+  (oggi non è un dato di primo piano nel flusso EV).
+- Nessun testo va **inviato per conto dell'utente** senza sua conferma
+  esplicita: le frasi sono suggerimenti da editare, non invii automatici.
+
+### B3 — Micro-stati di localizzazione
+
+Aggiungere al profilo un **tag di stato rapido ed effimero** che dice *dove
+sei nel locale* — es. 📍 Al Bancone, 📍 Area Fumatori, 📍 Pista — per
+facilitare il passaggio dal **match digitale all'incontro fisico**.
+
+- È un dato **volatile**, legato alla sessione: va azzerato all'uscita e non
+  deve diventare uno storico di spostamenti (v. §2, minimizzazione dei dati).
+- Toccando la posizione fisica dell'utente **dentro** il locale, va pesato
+  rispetto alla privacy e all'informativa.
+
+### B4 — Dinamica "Match & Claim" (gamification phygital)
+
+Dare al **locale** la possibilità di lanciare **"Drop" promozionali** (es.
+2×1 sui drink). L'app assegna **metà di un QR code** a un utente e **l'altra
+metà** a un altro utente casuale presenti alla serata: i due devono
+**trovarsi fisicamente** per ricomporre il codice e **validare lo sconto al
+bancone**.
+
+- Introduce il **locale come attore attivo** della meccanica di gioco e si
+  appoggia al flusso drink (**Step 6**), quindi è a valle dei pagamenti.
+- Rischi da gestire: abbinamenti che non si incontrano (drop "morti"),
+  possibili abusi, e la validazione al bancone che si intreccia con la coda
+  "da servire" (§4, Step 6).
+
+### B5 — Il "Digital Wingman" (amico spalla)
+
+Introdurre l'**"EV per procura"**: un utente può inviare un EV **per conto di
+un amico** presente nello **stesso gruppo**, sfruttando l'**ironia** e la
+**social proof** per **azzerare la paura del rifiuto** (non ti esponi tu, ti
+espone l'amico).
+
+- Dipende direttamente dalla **partecipazione in gruppo (§3j)** e dai suoi
+  nodi ancora aperti (chat di gruppo, debito **D13**).
+- Da chiarire il **consenso**: l'EV inviato a nome di un altro deve essere
+  tracciabile e, verosimilmente, autorizzato dal diretto interessato, per non
+  trasformare la spalla in spam.

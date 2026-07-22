@@ -9,6 +9,7 @@ const DB_ERRORS = {
   not_in_same_night: 'Questa persona non è più in questa serata.',
   ev_note_too_long: 'La nota è troppo lunga.',
   ev_rate_limited: 'Stai inviando troppi EV. Aspetta qualche istante.',
+  receiver_group_only: 'Questa persona si mostra solo come parte di un gruppo. Manda un EV al gruppo.',
 };
 
 function toPeopleError(error, fallback) {
