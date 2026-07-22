@@ -31,6 +31,17 @@ modificano ciò che le precedenti hanno creato.
 | 8 | `20260721_venue_messages.sql` | Comunicazioni del locale |
 | 9 | `20260721_memories.sql` | Ricordi derivati |
 | 10 | `20260721_blocks_reports.sql` | Blocco e segnalazione |
+| 11 | `20260722_badges.sql` | Badge: conteggi derivati (serate/drink/match) |
+| 12 | `20260722_groups.sql` | Gruppi: fondazione (tabelle, QR, RPC, RLS) |
+| 13 | `20260722_groups_chat.sql` | EV e chat di gruppo (D13) |
+| 14 | `20260722_groups_exit.sql` | Uscita dalla serata = uscita dal gruppo (trigger) |
+| 15 | `20260722_groups_presence.sql` | Presenza del gruppo nella serata |
+
+> ⚠️ **L'ordine dei file 20260722 conta** e segue l'ordine alfabetico:
+> `badges` → `groups` → `groups_chat` → `groups_exit` → `groups_presence`.
+> `groups` crea le tabelle su cui poggiano le altre tre, e ridefinisce
+> `can_view_profile`; `groups_presence` ridefinisce `people_in_my_night` e
+> `send_ev`. Applicale in quest'ordine o falliranno.
 
 Ognuna deve finire con *"Success. No rows returned"*. Se una fallisce,
 **fermati**: le successive daranno errori a cascata.
@@ -49,8 +60,14 @@ Servono da qui in poi. Il modo più veloce:
 | Account | Come | Serve per |
 |---|---|---|
 | **A — locale** | Google o email+password | Creare il locale e le serate |
-| **B — utente** | email+password | Entrare col QR |
-| **C — utente** | email+password | Verificare che gli estranei non vedano nulla |
+| **B — utente** | email+password | Entrare col QR; capogruppo nei test 2.10+ |
+| **C — utente** | email+password | Membro del gruppo; test "estraneo non vede" |
+| **D — utente** | email+password | Estraneo che manda un EV al gruppo (test 2.10/2.11) |
+
+> Per i test sui **gruppi** servono 3 utenti: B e C nello stesso gruppo, D
+> fuori. Se non vuoi una quarta finestra, puoi rifare i test di gruppo a
+> coppie, ma alcuni (EV al gruppo con chat condivisa vista da B **e** C)
+> rendono meglio con tre persone.
 
 ⚠️ L'account del **locale deve essere diverso** da quello personale: un
 account è personale *o* business, non entrambi (il server lo rifiuta apposta).
@@ -212,6 +229,52 @@ Se arrivi in fondo senza intoppi, l'ossatura dell'app regge.
 | B4 | Sblocco | Profilo → Persone bloccate → Sblocca | Tornate a vedervi |
 | B5 | Elenco vuoto | nessun blocco | "Nessuna persona bloccata" |
 
+### 2.10 Gruppi 🟡 *(servono B, C e D)*
+
+Prima applica le migration 11–15. Il gruppo si forma anche **fuori** da una
+serata: i primi test si possono fare da casa.
+
+| # | Cosa verifica | Passi | Atteso |
+|---|---|---|---|
+| G1 | Creazione | B → Home → "Crea o entra in un gruppo" → **Crea gruppo** | Pagina `/group` col QR; stato "In formazione" e countdown 1h |
+| G2 | Ingresso via QR | C inquadra il QR di B (o incolla il codice in "Partecipa") | C entra; B vede C comparire nella lista membri **senza ricaricare** |
+| G3 | Un solo gruppo | C, già nel gruppo, prova a crearne un altro | "Sei già in un gruppo…" |
+| G4 | Corona del capo | guarda la lista membri | B ha la corona; C no |
+| G5 | Nome gruppo | (facoltativo) il capo dà un nome | Compare a entrambi |
+| G6 | Porta in serata | B entra in una serata col QR del locale, poi `/group` → **Porta il gruppo in questa serata** | Stato passa a "In serata"; il countdown sparisce |
+| G7 | Gruppo come entità | D entra nella stessa serata → pagina Persone | Vede il **gruppo** come una card unica in "Gruppi presenti", non i singoli membri due volte |
+| G8 | "Solo nel gruppo" | C → `/group` → visibilità **Solo nel gruppo** | C **non** compare più come singolo nella lista di D; resta nel gruppo |
+| G9 | EV bloccato sul solo-gruppo | D prova a mandare un EV a C come singolo (se ancora visibile da un test precedente) | "Questa persona si mostra solo come parte di un gruppo" |
+| G10 | Cambio leadership | B → "Rendi capo" su C | La corona passa a C, live su entrambi |
+| G11 | Uscita di un membro | C → "Esci dal gruppo" | C esce, il gruppo resta per B; se C era il capo la leadership passa |
+| G12 | Uscita dalla serata | un membro fa "Esci dalla serata" (profilo) o QR di uscita | Esce **anche dal gruppo**; gli altri restano |
+| G13 | Scioglimento | il capo → "Sciogli il gruppo per tutti" | Il gruppo sparisce per tutti |
+| G14 | Ultimo che esce | resta un solo membro e esce | Il gruppo si scioglie da solo |
+| G15 | Scadenza 1h | crea un gruppo e non entrare in serata (o forza `expires_at` nel passato in Table Editor) | Dopo l'ora `my_group` lo dà per sciolto; non risulta più attivo |
+
+### 2.11 Chat di gruppo 🟡 *(servono B, C e D)*
+
+Con B e C nello stesso gruppo **in serata** (test G6) e D nella stessa serata.
+
+| # | Cosa verifica | Passi | Atteso |
+|---|---|---|---|
+| GC1 | EV al gruppo | D → Persone → card del gruppo → **EV al gruppo** (con nota) | Conferma "EV inviato al gruppo" |
+| GC2 | Arriva ai membri | B e C → `/group` → sezione "EV per il gruppo" | Entrambi vedono l'EV di D, **senza ricaricare** |
+| GC3 | Accetta | B preme **Accetta** | Nasce la conversazione; compare in "Chat di gruppo" a B, C **e** D |
+| GC4 | Chat condivisa | D scrive; poi C scrive | B, C e D vedono **tutti i messaggi**, live, con il nome di chi scrive |
+| GC5 | Ignora | (ripeti con un secondo EV) un membro preme **Ignora** | L'EV sparisce dalla lista in arrivo |
+| GC6 | Un gruppo non fa doppioni | D manda due EV allo stesso gruppo | Nessun duplicato, nessun errore |
+
+### 2.12 Badge ⚪
+
+| # | Cosa verifica | Passi | Atteso |
+|---|---|---|---|
+| BD1 | I miei badge | B → Profilo → "Riconoscimenti" | Tre categorie (serate/drink/match) con progresso; i drink restano a 0 |
+| BD2 | Conteggio serate | confronta "Serate" col numero di serate a cui B è entrato | Coincide |
+| BD3 | Conteggio match | confronta "Match" coi match reali di B | Coincide |
+| BD4 | Vista locale | A → dashboard → serata in corso → **Partecipanti e badge** | Elenco dei presenti/usciti coi badge sbloccati |
+| BD5 | Solo le proprie serate | vedi test avversario 3.5 (un altro locale non ottiene righe) | — |
+
 ---
 
 ## 3. Test da avversario 🔒 🔴
@@ -280,6 +343,63 @@ window.open(data.signedUrl);   // ora: si apre
 // aspetta 10 secondi e riapri lo stesso URL → deve dare errore
 ```
 
+### 3.5 Gruppi e badge 🔒 🔴
+
+**Da anonimo (incognito, senza login):**
+
+```js
+// Nessuno di questi deve restituire dati
+await __supabase.from('groups').select('*')          // → []
+await __supabase.from('group_members').select('*')   // → []
+await __supabase.from('group_evs').select('*')       // → []
+await __supabase.from('group_matches').select('*')   // → []
+await __supabase.from('group_messages').select('*')  // → []
+
+// Nessuna di queste deve funzionare (permission denied for function)
+await __supabase.rpc('create_group', { p_display_name: 'Hack' })
+await __supabase.rpc('join_group', { p_token: '11111111-1111-1111-1111-111111111111' })
+await __supabase.rpc('my_stats')
+```
+
+**Da utente autenticato che NON è nel gruppo** (usa D, con B+C in un gruppo):
+
+```js
+// 1. Leggere un gruppo di cui non fai parte → vuoto
+await __supabase.from('groups').select('*')            // → solo i tuoi (o [])
+await __supabase.from('group_members').select('*')     // → solo i tuoi
+
+// 2. Accettare un EV di un gruppo di cui non sei membro → deve fallire
+await __supabase.rpc('accept_group_ev', { p_group_ev: '<id-di-un-EV-al-gruppo-di-B/C>' })
+// → not_group_member
+
+// 3. Scrivere in una conversazione di gruppo di cui non fai parte → deve fallire
+await __supabase.rpc('send_group_message', { p_group_match: '<match-altrui>', p_text: 'intruso' })
+// → not_a_participant
+
+// 4. Diventare capo di un gruppo scrivendo direttamente → RLS blocca la insert/update
+await __supabase.from('group_members').update({ is_leader: true }).eq('user_id', (await __supabase.auth.getUser()).data.user.id)
+// → nessuna riga toccata (le scritture passano solo dalle RPC)
+```
+
+**Vista partecipanti di un locale non tuo** (con un account business diverso da A):
+
+```js
+// La serata è di A, non tua → deve fallire
+await __supabase.rpc('night_participants_with_stats', { p_night: '<serata-di-A>' })
+// → not_venue_owner
+```
+
+**"Solo nel gruppo" via API** (con D, e C impostato group_only nel gruppo di B):
+
+```js
+// C non deve comparire tra le persone (né come singolo)
+const { data } = await __supabase.rpc('people_in_my_night')
+data.find(p => p.id === '<uid-di-C>')   // → undefined
+
+// E un EV diretto a C deve essere rifiutato
+await __supabase.rpc('send_ev', { p_receiver: '<uid-di-C>' })   // → receiver_group_only
+```
+
 ---
 
 ## 4. Robustezza 🟡
@@ -302,7 +422,7 @@ Elencato per non cercare invano funzioni che non esistono ancora.
 | Area | Stato |
 |---|---|
 | **Pagamenti (Stripe)** | Non esiste nulla. Piani e drink non incassano; `open_night` non controlla il pagamento apposta, altrimenti nulla sarebbe testabile |
-| **Drink** | Disattivato di proposito, con badge "Presto" |
+| **Drink** | Disattivato di proposito, con badge "Presto". Di conseguenza il badge "Drink offerti" resta a 0 finché non arriva lo Step 6 |
 | **Recupero password** | Non implementato: chi perde la password resta fuori |
 | **Scanner con fotocamera** | Si incolla il codice, oppure si inquadra il QR con la fotocamera di sistema |
 | **Locali vicini** | `venues.location` è sempre vuoto: la ricerca per vicinanza non restituisce nulla |
