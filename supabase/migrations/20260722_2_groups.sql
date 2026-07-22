@@ -93,6 +93,8 @@ $$;
 
 -- LA definizione di "gruppo attivo": derivata, mai fidarsi dello status
 -- da solo. forming ⇒ entro l'ora; in_night ⇒ la serata è ancora aperta.
+-- "Serata aperta" si calcola con night_is_active (nights non ha una
+-- colonna status: lo stato deriva da opened_at/closed_at/opens_at/closes_at).
 create or replace function public.is_group_active(p_group uuid)
 returns boolean
 language sql stable security definer
@@ -101,12 +103,11 @@ as $$
   select exists (
     select 1
     from public.groups g
-    left join public.nights n on n.id = g.night_id
     where g.id = p_group
       and g.dissolved_at is null
       and (
         (g.status = 'forming'  and g.expires_at > now())
-        or (g.status = 'in_night' and n.status = 'open')
+        or (g.status = 'in_night' and public.night_is_active(g.night_id))
       )
   )
 $$;
